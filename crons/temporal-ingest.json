@@ -1,0 +1,8 @@
+{
+  "name": "Memory Stack — Temporal Ingest",
+  "schedule": "45 3 * * *",
+  "script": "temporal_ingest.sh",
+  "no_agent": true,
+  "deliver": "local",
+  "description": "Nightly sidecar version capture for MEMORY.md/USER.md. Requires temporal_ingest.sh wrapper; does not modify live memory files."
+}

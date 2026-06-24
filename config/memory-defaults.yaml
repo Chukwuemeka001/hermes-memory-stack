@@ -1,0 +1,56 @@
+# Hermes Memory Stack — Default Configuration
+# Copy relevant sections to ~/.hermes/config.yaml
+
+memory:
+  # Tier 0: Basic memory (always on)
+  memory_enabled: true
+  memory_char_limit: 15000
+  user_char_limit: 6000
+  
+  # Tier 1: Semantic retrieval
+  semantic:
+    enabled: true
+    model: all-MiniLM-L6-v2
+    chroma_path: ~/.hermes/chroma/sessions
+    daemon: true
+    daemon_socket: ~/.hermes/chroma/semantic.sock
+    reindex_schedule: "35 3 * * *"  # 3:35 AM daily
+    
+  # Tier 2: Auto-extraction
+  auto_extract:
+    enabled: true
+    model: auto  # use cheapest available (local LLM preferred)
+    max_facts_per_session: 5
+    max_facts_per_night: 10
+    min_session_turns: 2
+    dry_run: true  # safety default: first installs run candidate extraction only; no hot-memory writes
+    signal_words_file: ~/.hermes/config/signal-words.txt
+    
+  # Tier 3: Temporal versioning
+  temporal:
+    enabled: true
+    db_path: ~/.hermes/memory_versions.db
+    max_versions_per_entry: 10
+    prune_after_days: 90
+
+  # Capacity + state.db health thresholds.
+  # AUTHORITATIVE source = scripts/memory_health.py (WARN_PCT / CRIT_PCT /
+  # STATE_DB_WARN_MB / STATE_DB_CRIT_MB / STATE_DB_REMEDIATE_MB). These values
+  # MIRROR that file and scripts/memory_audit.py — keep all three in sync.
+  health:
+    capacity_warning_percent: 80   # MEMORY.md / USER.md char-budget WARNING
+    capacity_critical_percent: 90  # MEMORY.md / USER.md char-budget CRITICAL
+    state_db_remediate_mb: 30      # generate a remediation plan above this
+    state_db_warning_mb: 50        # recommend audit/remediation above this
+    state_db_critical_mb: 200      # urgent — remediation strongly recommended
+
+  # Tier 4: Curator (NOT bundled in this package — see README "Status" table;
+  # the bundled Area 1-5 remediation pipeline replaces the curator's cleanup).
+  curator:
+    enabled: true
+    sweep_schedule: "50 3 * * *"
+    monitor_schedule: "0 */6 * * *"
+    weekly_schedule: "0 4 * * 0"
+    stale_after_days: 30
+    capacity_warning_percent: 80
+    capacity_critical_percent: 90

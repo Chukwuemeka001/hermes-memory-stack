@@ -1,0 +1,8 @@
+{
+  "name": "Memory Stack — Semantic Reindex",
+  "schedule": "35 3 * * *",
+  "script": "semantic_reindex.sh",
+  "no_agent": true,
+  "deliver": "local",
+  "description": "Nightly incremental ChromaDB reindex and daemon refresh. Safe; does not write MEMORY.md."
+}

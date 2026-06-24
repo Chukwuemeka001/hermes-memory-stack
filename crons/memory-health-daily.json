@@ -1,0 +1,8 @@
+{
+  "name": "Memory Stack — Daily Health Check",
+  "schedule": "0 6 * * *",
+  "script": "memory_health_cron.sh",
+  "no_agent": true,
+  "deliver": "local",
+  "description": "Daily READ-ONLY memory-stack health: hot-file capacity, entry pressure, temporal drift, memory-cron statuses, state.db sizes, semantic/auto-extract. Green/yellow/red. Exit 0 even when RED (alerts are in the content). Replaces the noisy every-6h capacity monitor (pause cron 6aabc8745056). 6 AM, away from the 3:35-4 AM memory-cron cluster. Never touches the gateway/Telegram."
+}

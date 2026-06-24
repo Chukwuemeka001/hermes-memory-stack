@@ -1,0 +1,8 @@
+{
+  "name": "Memory Stack — Auto Extraction Dry Run",
+  "schedule": "40 3 * * *",
+  "script": "memory_auto_extract_cron.sh",
+  "no_agent": true,
+  "deliver": "local",
+  "description": "Nightly DRY-RUN candidate extraction. Safe default: writes candidates/logs only, never MEMORY.md. Review for at least a week before enabling write mode."
+}

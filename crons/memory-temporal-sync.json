@@ -1,0 +1,8 @@
+{
+  "name": "Memory Stack — Weekly Maintenance + Temporal Sync",
+  "schedule": "0 5 * * 6",
+  "script": "memory_maintenance_cron.sh",
+  "no_agent": true,
+  "deliver": "local",
+  "description": "Weekly read-only maintenance pass (temporal sync -> verify -> auto-extract report -> audit -> capacity) that ALSO records hot-memory DRIFT into the temporal layer (--apply-temporal-sync: appends events to history.jsonl + memory_versions.db ONLY; NEVER modifies MEMORY.md/USER.md). Saturday 5 AM, distinct from the Sunday 4 AM LLM consolidation. Script-only, no provider calls, no gateway/Telegram interference. Exit 0 on success."
+}

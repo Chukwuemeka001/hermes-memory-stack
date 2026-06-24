@@ -1,0 +1,51 @@
+# Signal words for auto-extraction
+# Lines starting with # are comments
+# One signal word/phrase per line
+# Case-insensitive matching
+
+# Correction signals
+actually
+no, I
+I don't
+wrong
+correction
+that's not right
+I said
+what I meant
+not what I
+
+# Preference signals
+I prefer
+I use
+I like
+I want
+my preference
+switch to
+I'd rather
+can you always
+don't ever
+
+# Identity signals
+my name
+I work
+I live
+I'm a
+I'm an
+my role
+my job
+
+# Workflow signals
+always do
+never do
+remember that
+make sure
+important:
+don't forget
+
+# Technical signals
+I changed
+updated to
+moved to
+now using
+replaced with
+deprecated
