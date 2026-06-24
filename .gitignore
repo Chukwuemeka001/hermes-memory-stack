@@ -1,0 +1,53 @@
+# Secrets — never commit
+.env
+*.env
+auth.json
+*.bak
+*.bak.*
+*.lock
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Temporal / state
+memory_versions.db
+memory_versions.db-shm
+memory_versions.db-wal
+history.jsonl
+history.jsonl.corrupt
+_versions/
+
+# ChromaDB
+chroma/
+*.sock
+*.pid
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Test artifacts
+/tmp/
+*.tmp
+.remediate_work_*
+.onboard/
+
+# State databases (never commit user data)
+state.db
+state.db-shm
+state.db-wal
+state.db.bak*
+state-snapshots/

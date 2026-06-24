@@ -97,7 +97,7 @@ python3 ~/.hermes/scripts/semantic_query.py "trading" --hybrid --fts ID1,ID2  # 
 
 **Importable API:**
 ```python
-import sys; sys.path.insert(0, "/Users/emeka/.hermes/scripts")
+import sys; sys.path.insert(0, os.path.expanduser("~/.hermes/scripts"))
 import semantic_query as sq
 sq.semantic_search("risk management", n_results=10, db_path=None)
 sq.hybrid_search("risk management", fts_results=["id1","id2"], n_results=10)  # RRF, k=60

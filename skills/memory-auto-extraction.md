@@ -78,7 +78,7 @@ python3 ~/.hermes/scripts/memory_auto_extract_eval.py --real --days 7           
 
 The cron wrapper runs DRY-RUN only (Phase 1). Promotion to `--write` is a
 deliberate Phase-2 step. Example schedule (after the dream cycle, not auto-installed):
-`30 3 * * *  /Users/emeka/.hermes/scripts/memory_auto_extract_cron.sh`
+`30 3 * * *  ~/.hermes/scripts/memory_auto_extract_cron.sh`
 
 ## Tuning surface (CONFIG dict)
 
