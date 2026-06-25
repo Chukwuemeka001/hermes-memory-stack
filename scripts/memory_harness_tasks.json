@@ -1,0 +1,123 @@
+{
+  "version": "1.0.0",
+  "today": "2026-06-24",
+  "_about": "Synthetic task fixtures for the memory projection HONESTY HARNESS (Tier 1). ALL DATA IS FICTIONAL. No real names, paths, keys, or private facts. Each task labels a hand-picked GOLD set: 'required' = entries a good answer needs (graded for recall), 'pin' = a non-negotiable that must survive projection at any budget (safety/identity/operational), 'noise' = a deliberate distractor that competes for budget. Required entries are written so the lexical query proxy CAN surface them, but several are dated/episodic so they score low on static intrinsic value — that gap is the honest point: static projection under-serves task recall, query-aware projection helps, and remaining misses are reported, not hidden. See skills/memory-honesty-harness.md.",
+  "tasks": [
+    {
+      "id": "hermes-telegram-poller",
+      "category": "hermes-troubleshooting",
+      "_note": "RECOVERY case: the two required entries are dated/episodic (low static score), so static projection drops BOTH (0% recall) while query-aware projection surfaces them (100%). The clearest demonstration that query-awareness recovers episodic recall the static fallback cannot.",
+      "query": "the telegram poller keeps dropping events again, how do I recover the watchdog",
+      "budget_tokens": 150,
+      "memory": [
+        {"text": "Long-form notes live in `~/.hermes/notes/INDEX.md`. Read INDEX.md first to find any long-form topic.", "pin": "operational", "label": "notes-header"},
+        {"text": "Root cause (2026-02-10): the telegram poller dropped events because an unawaited coroutine swallowed them; fix is to await the handler and add a backpressure queue.", "required": true, "label": "telegram-poller-rootcause"},
+        {"text": "Watchdog recovery procedure: stop the gateway, pull latest, restart the watchdog, then verify the poller heartbeat before walking away.", "required": true, "label": "watchdog-recovery"},
+        {"text": "Root cause (2026-01-22): the semantic daemon OOMed when the embedding batch size was left unbounded; cap the batch to fix it.", "noise": true, "label": "noise-semantic-oom"},
+        {"text": "Cron scheduler fixed on 2026-01-30: duplicate fires came from two enabled schedules sharing one id, deployed and verified.", "noise": true, "label": "noise-cron-dup"},
+        {"text": "NCLEX pharmacology cards need a high-yield rationale and a side-effect cluster per drug class.", "noise": true, "label": "noise-nclex"},
+        {"text": "Trading POI identification uses order blocks and liquidity inducement; the spec doc is the source of truth.", "noise": true, "label": "noise-trading"}
+      ],
+      "user": [
+        {"text": "User prefers blunt, ROI-focused correction over reassurance, always.", "noise": true, "label": "noise-pref-blunt"},
+        {"text": "User wants a brief plan then immediate action when the next step is obvious.", "noise": true, "label": "noise-pref-action"}
+      ]
+    },
+    {
+      "id": "nclex-pharm-rationale",
+      "category": "nclex",
+      "_note": "HARD case (weak overlap): the error-journal required entry shares few words with the query, so the weak lexical proxy under-ranks it and it is squeezed out -> partial recall (WARN). An honest demonstration that the Tier-1 proxy misses weakly-overlapping required context; the real semantic model should do better (Tier 2 confirms).",
+      "query": "build the beta blocker pharmacology rationale flashcard and log the missed items",
+      "budget_tokens": 140,
+      "memory": [
+        {"text": "Long-form notes live in `~/.hermes/notes/INDEX.md`. Read INDEX.md first to find any long-form topic.", "pin": "operational", "label": "notes-header"},
+        {"text": "NCLEX pharmacology rationale cards must give the 'why' first: beta blocker cards pair the mechanism with the side-effect cluster and a safety check.", "required": true, "label": "nclex-pharm-card-spec"},
+        {"text": "NCLEX error journal: tag every missed item by body system, then schedule remediation for the weakest system before adding new content.", "required": true, "label": "nclex-error-journal"},
+        {"text": "Root cause (2026-02-10): the telegram poller dropped events from an unawaited coroutine; await the handler.", "noise": true, "label": "noise-telegram"},
+        {"text": "Trading brain status (2026-01-20): origin candidate V3 in progress, backtests pending.", "noise": true, "label": "noise-trading-status"},
+        {"text": "Design system spacing scale is 4 / 8 / 12 / 16; tokens live in the design resources note.", "noise": true, "label": "noise-design"},
+        {"text": "Watchdog recovery: stop the gateway, pull, restart, verify the heartbeat.", "noise": true, "label": "noise-watchdog"}
+      ],
+      "user": [
+        {"text": "User prefers cheap or free study tooling and an error-journal remediation loop over rote rereading.", "noise": true, "label": "noise-pref-study"}
+      ]
+    },
+    {
+      "id": "trading-origin-candidate-v3",
+      "category": "trading-project-recall",
+      "_note": "HARD case (high-value off-topic competition): two safety pins survive, but at this budget several cheap high-static off-topic entries out-score one required entry on the blended score, so projection keeps only one of the two required -> partial recall (WARN). Honest signal that relevance (weight 0.20) can lose to off-topic static value at tight budgets.",
+      "query": "what is the plan for origin candidate v3 POI work in the trading brain",
+      "budget_tokens": 150,
+      "memory": [
+        {"text": "Execution safety: do not connect the Trading Brain to live execution; keep research and execution strictly separate.", "pin": "safety", "label": "exec-safety-pin"},
+        {"text": "Trading project: POI identification uses order blocks and liquidity inducement; the trader-repo spec doc is the source of truth.", "required": true, "label": "trading-poi-spec"},
+        {"text": "Origin Candidate V3 proof point: collect and review 5-10 fresh TradingView diagnostics BEFORE implementing the new origin logic.", "required": true, "label": "origin-v3-proofpoint"},
+        {"text": "NCLEX pharmacology cards need a high-yield rationale per drug class.", "noise": true, "label": "noise-nclex"},
+        {"text": "Cron scheduler fixed on 2026-01-30: duplicate fires from two schedules sharing an id, deployed and verified.", "noise": true, "label": "noise-cron"},
+        {"text": "Design palette is warm monochrome with strong typographic contrast and no gradients.", "noise": true, "label": "noise-design"},
+        {"text": "Memory stack status (2026-02-02): projection engine phase 1 shipped, harness pending.", "noise": true, "label": "noise-memorystack-status"}
+      ],
+      "user": [
+        {"text": "User is a trader-engineer hybrid trying to leave nursing through trading and software.", "noise": true, "label": "noise-pref-bio"},
+        {"text": "Do not scale before a proof point exists; manual evidence before any automation.", "pin": "safety", "label": "no-scale-pin"}
+      ]
+    },
+    {
+      "id": "design-landing-redesign",
+      "category": "design-recall",
+      "_note": "POSITIVE CONTROL: noise is genuinely low-value (dated status / vague) and the required entries are concise. Projection KEEPS both required design entries in BOTH static and query-aware modes — the positive half of the savings-without-loss claim (it works when competing entries are low-value).",
+      "query": "what spacing scale and brand palette should the landing page redesign use",
+      "budget_tokens": 140,
+      "memory": [
+        {"text": "Long-form notes live in `~/.hermes/notes/INDEX.md`. Read INDEX.md first to find any long-form topic.", "pin": "operational", "label": "notes-header"},
+        {"text": "Design spacing rhythm follows an eight-point system; the scale and color tokens live in the design resources note.", "required": true, "label": "design-spacing-scale"},
+        {"text": "Brand palette: warm monochrome, strong typographic contrast, no gradients.", "required": true, "label": "design-brand-palette"},
+        {"text": "Semantic reindex job re-enabled on 2026-01-15, deployed and verified.", "noise": true, "label": "noise-status-reindex"},
+        {"text": "Housekeeping note from 2026-01-09: minor tidy-up across the journal, nothing notable.", "noise": true, "label": "noise-vague-housekeeping"},
+        {"text": "Watchdog restarted on 2026-01-22: a transient blip cleared, verified and closed.", "noise": true, "label": "noise-status-watchdog"},
+        {"text": "Old planning snapshot from 2026-02-05: assorted roadmap items were jotted down.", "noise": true, "label": "noise-vague-snapshot"}
+      ],
+      "user": [
+        {"text": "Routine update on 2026-01-12: a small unrelated tweak was noted, no action needed.", "noise": true, "label": "noise-vague-update"}
+      ]
+    },
+    {
+      "id": "user-preference-recall",
+      "category": "user-preference-recall",
+      "_note": "RECOVERY case: durable preferences. Query-aware projection recalls both required prefs (100%); static keeps one and drops the other (50%) because dated status noise competes. Shows query-awareness helps even for durable-preference recall.",
+      "query": "should I write a long research report or give a quick direct answer and act",
+      "budget_tokens": 130,
+      "memory": [
+        {"text": "Long-form notes live in `~/.hermes/notes/INDEX.md`. Read INDEX.md first to find any long-form topic.", "pin": "operational", "label": "notes-header"},
+        {"text": "Watchdog recovery fixed on 2026-01-30: stop, pull, restart, verify, deployed and verified.", "noise": true, "label": "noise-watchdog-status"},
+        {"text": "Trading brain status (2026-01-20): origin candidate V3 in progress, backtests pending.", "noise": true, "label": "noise-trading-status"},
+        {"text": "NCLEX project status (2026-01-15): phase 2 in progress, 12 of 30 cards done.", "noise": true, "label": "noise-nclex-status"}
+      ],
+      "user": [
+        {"text": "User prefers a brief direct answer first (3-5 lines), then offers detail on request; never dump a long research report unasked.", "required": true, "label": "pref-brief-direct"},
+        {"text": "User prefers blunt, ROI-focused correction over reassurance, and a brief plan then immediate action.", "required": true, "label": "pref-blunt-action"},
+        {"text": "User prefers plain terminal output with no option trees or filler.", "noise": true, "label": "noise-pref-plain"},
+        {"text": "User pins dependencies to exact versions for reproducibility.", "noise": true, "label": "noise-pref-deps"}
+      ]
+    },
+    {
+      "id": "safety-leaked-api-key",
+      "category": "safety-apikey-guardrails",
+      "_note": "SAFETY case: three safety pins must survive projection (verified at budget=0), AND the incident runbook must be recalled. Budget is set above pins+required so we test SELECTION, not arithmetic impossibility (that case is covered by a unit test).",
+      "query": "an api key may have leaked in a log, what is the incident procedure to rotate and audit",
+      "budget_tokens": 130,
+      "memory": [
+        {"text": "API key policy: keys are for the gateway service only; never paste an API key into task work, logs, or commits.", "pin": "safety", "label": "apikey-policy-pin"},
+        {"text": "Never share API key tokens or other secrets in logs, screenshots, or commit messages.", "pin": "safety", "label": "never-share-secrets-pin"},
+        {"text": "Incident runbook for a leaked key: rotate the key via the ops console first, then audit the access logs for misuse, then re-issue to the gateway.", "required": true, "label": "leaked-key-runbook"},
+        {"text": "NCLEX pharmacology cards need a high-yield rationale per drug class.", "noise": true, "label": "noise-nclex"},
+        {"text": "Design spacing scale is 4 / 8 / 12 / 16; tokens in the resources note.", "noise": true, "label": "noise-design"},
+        {"text": "Trading POI uses order blocks and liquidity inducement; spec in the trader repo.", "noise": true, "label": "noise-trading"}
+      ],
+      "user": [
+        {"text": "Trading rule: no live trades with real money without explicit human approval first.", "pin": "safety", "label": "no-live-trade-pin"},
+        {"text": "User prefers blunt, ROI-focused correction over reassurance.", "noise": true, "label": "noise-pref-blunt"}
+      ]
+    }
+  ]
+}
