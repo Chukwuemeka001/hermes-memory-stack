@@ -13,6 +13,8 @@ import json
 import os
 import sys
 import tempfile
+import threading
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -351,6 +353,37 @@ class TestSafetyGates(Base):
         archived = [os.path.join(arch, f) for f in os.listdir(arch) if "MEMORY.md.pre-rewrite" in f]
         self.assertTrue(archived)
         self.assertEqual(read(archived[0]), original)
+
+    def test_apply_waits_for_shared_file_lock(self):
+        if MR.fcntl is None:
+            self.skipTest("fcntl unavailable")
+        m = [mk_entry("memory", 0, "Header: notes live in ~/.hermes/notes/.", "keep"),
+             mk_entry("memory", 1, "Status fixed on 2026-01-01: works now, build passes.",
+                      "remove_after_archive")]
+        self.write_live(m, [])
+        plan = MR.build_plan(self.report(m, []), user_home=self.tmp)
+        arch = os.path.join(self.tmp, "arch")
+        lock_path = self.mem + ".lock"
+        lock_fh = open(lock_path, "a+", encoding="utf-8")
+        MR.fcntl.flock(lock_fh.fileno(), MR.fcntl.LOCK_EX)
+        done = []
+        try:
+            t = threading.Thread(target=lambda: done.append(MR.apply(plan, confirm=True, archive_dir=arch)))
+            t.start()
+            time.sleep(0.2)
+            self.assertEqual(done, [], "apply must block while MEMORY.md.lock is held")
+            MR.fcntl.flock(lock_fh.fileno(), MR.fcntl.LOCK_UN)
+            t.join(3)
+        finally:
+            try:
+                MR.fcntl.flock(lock_fh.fileno(), MR.fcntl.LOCK_UN)
+            except OSError:
+                pass
+            lock_fh.close()
+        self.assertFalse(t.is_alive(), "apply should proceed after the lock is released")
+        self.assertTrue(done and done[0]["applied"])
+        self.assertTrue(any("locks_acquired" in step for step in done[0]["steps"]))
+        self.assertNotIn("Status fixed on 2026-01-01", read(self.mem))
 
 
 class TestReviewRegressions(Base):

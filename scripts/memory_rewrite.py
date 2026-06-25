@@ -38,7 +38,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager, ExitStack
 import datetime as _dt
+try:
+    import fcntl
+except Exception:  # pragma: no cover - non-POSIX fallback
+    fcntl = None
 import json
 import os
 import re
@@ -561,6 +566,39 @@ def render(plan: dict, out_dir: str, *, archive_dir: str | None = None) -> dict:
             "manifest": manifest_path, "review": review_path, "archives": archives}
 
 
+
+@contextmanager
+def file_lock(target: str):
+    """Advisory flock on '<target>.lock', matching curator/auto-extract/temporal writers.
+
+    The lock is taken on the logical live path (not the temp file) so rewrite apply
+    serializes with cron sweep, memory tool writes, gateway writers, and auto-extract.
+    On platforms without fcntl it degrades to a no-op, matching existing package
+    conventions.
+    """
+    lock_path = os.path.abspath(os.path.expanduser(str(target))) + ".lock"
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    fh = open(lock_path, "a+", encoding="utf-8")
+    try:
+        if fcntl is not None:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            if fcntl is not None:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            fh.close()
+
+
+def _lock_targets(plan: dict) -> list[str]:
+    paths = []
+    for f in (plan.get("_out_files_text") or {}).values():
+        path = f.get("path")
+        if path:
+            paths.append(os.path.abspath(os.path.expanduser(path)))
+    return sorted(set(paths))
+
 # --------------------------------------------------------------------------- #
 # Apply (gated; staleness-checked; archive-first). Not used in onboarding.    #
 # --------------------------------------------------------------------------- #
@@ -582,40 +620,52 @@ def apply(plan: dict, *, confirm: bool, archive_dir: str, now: _dt.datetime | No
     stamp = now.strftime("%Y%m%d-%H%M%S")
     arch_dir = os.path.abspath(os.path.expanduser(archive_dir))
 
-    # Staleness guard: the live files must match what the audit saw (no drift).
-    for store, f in plan["_out_files_text"].items():
-        src = f["path"]
-        if not os.path.exists(src):
-            result["errors"].append(f"live file missing since audit: {src} — refusing (stale)")
-            return result
-        live_sha = MA.sha256_text(MA.read_text(src))
-        if f["source_sha256"] and live_sha != f["source_sha256"]:
-            result["errors"].append(
-                f"live {os.path.basename(src)} changed since the audit (SHA drift) — "
-                "re-audit before apply")
-            return result
+    # Take every live hot-memory lock before checking SHA drift and hold the locks
+    # through archive + atomic write. This closes the TOCTOU/concurrent-writer gap
+    # with curator/monitor/consolidation crons and memory-tool writes.
+    lock_targets = _lock_targets(plan)
+    with ExitStack() as stack:
+        for target in lock_targets:
+            stack.enter_context(file_lock(target))
+        if lock_targets:
+            result["steps"].append({"locks_acquired": [p + ".lock" for p in lock_targets]})
 
-    os.makedirs(arch_dir, exist_ok=True)
-    # 1) Archive every live original FIRST (timestamped, no-clobber).
-    for store, f in plan["_out_files_text"].items():
-        src = f["path"]
-        dst = _unique_path(os.path.join(arch_dir, f"{os.path.basename(src)}.pre-rewrite-{stamp}"))
-        shutil.copy2(src, dst)
-        result["steps"].append({"archived_original": dst, "sha256": MA.sha256_text(MA.read_text(dst))})
-    # 2) Write a manifest of the change next to the archives.
-    try:
-        with open(os.path.join(arch_dir, f"rewrite-manifest-{stamp}.json"), "w", encoding="utf-8") as fh:
-            json.dump(build_manifest(plan, []), fh, indent=2)
-    except Exception:
-        pass
-    # 3) Atomically write proposed content to the live files.
-    for store, f in plan["_out_files_text"].items():
-        live = f["path"]
-        tmp = live + f".rewrite.{stamp}.tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            fh.write(f["proposed_text"])
-        os.replace(tmp, live)
-        result["steps"].append({"wrote_live": live})
+        # Staleness guard: the live files must match what the audit saw (no drift).
+        # This is intentionally done UNDER the locks so nobody can change the file
+        # between the SHA check and the atomic replacement.
+        for store, f in plan["_out_files_text"].items():
+            src = f["path"]
+            if not os.path.exists(src):
+                result["errors"].append(f"live file missing since audit: {src} — refusing (stale)")
+                return result
+            live_sha = MA.sha256_text(MA.read_text(src))
+            if f["source_sha256"] and live_sha != f["source_sha256"]:
+                result["errors"].append(
+                    f"live {os.path.basename(src)} changed since the audit (SHA drift) — "
+                    "re-audit before apply")
+                return result
+
+        os.makedirs(arch_dir, exist_ok=True)
+        # 1) Archive every live original FIRST (timestamped, no-clobber).
+        for store, f in plan["_out_files_text"].items():
+            src = f["path"]
+            dst = _unique_path(os.path.join(arch_dir, f"{os.path.basename(src)}.pre-rewrite-{stamp}"))
+            shutil.copy2(src, dst)
+            result["steps"].append({"archived_original": dst, "sha256": MA.sha256_text(MA.read_text(dst))})
+        # 2) Write a manifest of the change next to the archives.
+        try:
+            with open(os.path.join(arch_dir, f"rewrite-manifest-{stamp}.json"), "w", encoding="utf-8") as fh:
+                json.dump(build_manifest(plan, []), fh, indent=2)
+        except Exception:
+            pass
+        # 3) Atomically write proposed content to the live files.
+        for store, f in plan["_out_files_text"].items():
+            live = f["path"]
+            tmp = live + f".rewrite.{stamp}.tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                fh.write(f["proposed_text"])
+            os.replace(tmp, live)
+            result["steps"].append({"wrote_live": live})
     result["applied"] = True
     # 4) INTEG-3: record this rewrite's provenance into an EXISTING temporal layer.
     #    Gated by the same `confirm` that authorised the live write (we already
