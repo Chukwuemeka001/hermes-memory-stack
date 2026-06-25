@@ -33,6 +33,7 @@ highest-value entries that fit a **token budget** (typically 500–2,000 tokens)
 > handle immediately (safe to call every turn).
 
 Script: `scripts/memory_project.py` (stdlib only; no LLM, no network).
+Shadow telemetry: `scripts/memory_shadow.py` (computes full-vs-projected but keeps FULL active).
 Reuses `memory_audit.py` (scoring dimensions) and `temporal_memory.py` (recency).
 
 ## Why this is the highest-leverage feature
@@ -162,6 +163,28 @@ relevance_source       disabled:no-query or memories-index:N hits
 relevance_breakdown    per-match-source counts (content_hash / entry_ref / none)
 projected_block        the rendered block, ready to inject
 ```
+
+## Shadow-mode dogfood before live injection
+
+Before replacing live prompt memory with `projected_block`, run shadow mode:
+
+```bash
+python3 scripts/memory_shadow.py --home ~/.hermes \
+  --query "current user turn" \
+  --budget 1500 \
+  --out reports/shadow-projection-$(date +%F).jsonl
+```
+
+Shadow mode writes append-only JSONL telemetry and explicitly records:
+
+- `active_block: "full"` — the agent should still answer from full memory.
+- `full.tokens` vs `projected.tokens` and projected `savings_pct`.
+- `diff.selected_refs` / `diff.skipped_refs`.
+- `answer_usage.used_missing_from_projection` if `--answer-file` or `--answer-text` is provided.
+
+Raw memory blocks are **not** logged by default. Use `--include-blocks` only for local debugging because it writes full hot memory into the report.
+
+Only after enough shadow reports show acceptable misses should any runtime lane flip from `full` to `projected`.
 
 ## Integrate with the agent runtime
 

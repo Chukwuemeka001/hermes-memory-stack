@@ -14,11 +14,22 @@ reports/tier2-full-2026-06-25.json
 
 Hermes Memory Stack is a local-first Memory OS for long-running agents. This evaluation measures whether its projection layer can reduce injected memory while preserving the context needed for useful answers.
 
+## Alignment with current Hermes direction
+
+On 2026-06-18, Teknium/Nous posted that Hermes Agent had merged an expanded memory-management tool for batch save/edit/remove operations, reducing turn overhead in common memory workflows.
+
+This evaluation builds on that direction at the next layer: once memory operations are cheaper, the remaining leverage is deciding **which memory should enter the prompt per turn** and proving that projection does not drop required facts or safety pins. The stack now pairs Hermes batch memory operations with:
+
+- deterministic projection telemetry,
+- public honesty fixtures,
+- optional model-backed answer-quality grading, and
+- shadow-mode full-vs-projected logging before live prompt replacement.
+
 The short version:
 
 | Result | Value |
 |---|---:|
-| Full test suite | **377/377 passing** |
+| Full test suite | **383/383 passing** |
 | Tier-1 deterministic tasks | **14** |
 | Tier-1 overall | **WARN** — 9 PASS / 5 WARN / 0 FAIL |
 | Query-aware required-fact recall | **82.1%** |
@@ -62,7 +73,7 @@ python3 -m unittest discover -s tests -v
 Current result:
 
 ```text
-Ran 377 tests in 35.005s
+Ran 383 tests in 38.599s
 OK
 ```
 
@@ -311,18 +322,27 @@ Then summarize:
 - violated or unconfirmed pins
 - cost/time per task
 
-### 3. Add shadow-mode dogfooding in Hermes
+### 3. Dogfood shadow-mode telemetry in Hermes
 
-Before live replacement, run projection beside full memory:
+`memory_shadow.py` now implements the safe bridge before live prompt replacement:
 
-| Mode | Behavior |
+```bash
+python3 scripts/memory_shadow.py --home ~/.hermes \
+  --query "current user turn" \
+  --budget 1500 \
+  --out reports/shadow-projection-$(date +%F).jsonl
+```
+
+Shadow mode records:
+
+| Field | Meaning |
 |---|---|
-| full | current full hot-memory injection |
-| projected | computed working set |
-| shadow | log both, still use full |
-| live | inject projected memory |
+| `active_block: full` | live answer should still use full memory |
+| `full.tokens` / `projected.tokens` | actual savings opportunity |
+| `diff.selected_refs` / `diff.skipped_refs` | what projection kept/dropped |
+| `answer_usage.used_missing_from_projection` | deterministic post-answer signal for facts used by the answer but missing from projection |
 
-Shadow mode should collect misses before projection becomes default.
+Runtime lanes should remain `full` until enough shadow reports prove misses are acceptable.
 
 ### 4. Create `reports/` snapshots
 

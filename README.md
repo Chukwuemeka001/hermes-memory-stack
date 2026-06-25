@@ -16,6 +16,7 @@ This is the tool.
 | **Pointer rewrite** | Condenses verbose entries into concise pointers |
 | **Temporal versioning** | Tracks every memory change with rollback and diff |
 | **Memory projection** | Injects a compact working set instead of brute-force full memory |
+| **Shadow-mode telemetry** | Logs full-vs-projected memory side-by-side while keeping full memory active |
 | **Honesty harness** | Measures required-fact recall, pin survival, token savings, and optional answer-quality preservation |
 | **Health monitoring** | Capacity alerts, drift detection, cron automation |
 | **Semantic retrieval** | Find memories by concept, not just keywords |
@@ -28,7 +29,7 @@ Current headline numbers:
 
 | Metric | Result |
 |---|---:|
-| Full test suite | **377/377 passing** |
+| Full test suite | **383/383 passing** |
 | Tier-1 deterministic harness | **WARN** — 9 PASS / 5 WARN / 0 FAIL |
 | Query-aware required-fact recall | **82.1%** |
 | Query-aware harness token savings | **27.8%** |
@@ -69,7 +70,7 @@ bash install.sh all
 ```
 
 This installs:
-- 21 Python scripts + 6 shell scripts
+- 22 Python scripts + 6 shell scripts
 - Semantic retrieval daemon (ChromaDB)
 - Auto-extraction (dry-run by default)
 - Temporal versioning
@@ -206,20 +207,24 @@ python3 -m unittest discover -s tests -v
 # Projection honesty harness
 python3 scripts/memory_harness.py --json
 
+# Shadow-mode dogfood: log full-vs-projected telemetry while keeping FULL active
+python3 scripts/memory_shadow.py --home ~/.hermes \
+  --query "current user turn" --budget 1500 --json
+
 # Optional model-backed Tier-2 smoke (uses Claude Code CLI subscription auth)
 python3 scripts/memory_harness.py --tier2 --tier2-grader claude-cli \
   --tier2-task safety-leaked-api-key --tier2-timeout 180 --json
 ```
 
-**377 tests passing.** Unit/E2E tests use synthetic data and never touch live memory by default.
+**383 tests passing.** Unit/E2E tests use synthetic data and never touch live memory by default.
 
 ## What's included
 
 | Category | Files |
 |---|---|
-| Scripts | 21 Python + 6 shell |
-| Tests | 13 test files (377 tests) |
-| Skills | 9 operator docs |
+| Scripts | 22 Python + 6 shell |
+| Tests | 14 test files (383 tests) |
+| Skills | 12 operator docs |
 | Crons | 5 no-agent definitions |
 | Plans | 5 design documents |
 | Config | Defaults + signal words |
@@ -229,7 +234,7 @@ python3 scripts/memory_harness.py --tier2 --tier2-grader claude-cli \
 - **Auto-extraction is dry-run by default** — `--write` is not enabled until precision is proven on real data
 - **Semantic daemon needs Python 3.14** with chromadb + sentence-transformers
 - **Gateway must be stopped** before state.db cleanup
-- **Projection is not wired into live Hermes prompt assembly yet** — the engine and honesty harness are built; live use should start in shadow mode
+- **Projection is not wired into live Hermes prompt assembly yet** — `memory_shadow.py` now dogfoods full-vs-projected telemetry while keeping full memory active; live injection should wait for shadow reports
 - **Tier-2 answer-quality grading is opt-in** — real runs call Claude Code CLI and spend subscription tokens
 
 ## License
