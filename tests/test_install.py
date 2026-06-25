@@ -205,9 +205,18 @@ class TestInstall(unittest.TestCase):
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
-            # Bare 'pip install' without python3 -m prefix
-            if "pip install" in stripped and "python3 -m pip" not in stripped:
+            # Bare 'pip install' without an interpreter -m prefix
+            if "pip install" in stripped and "-m pip" not in stripped:
                 self.fail(f"Line {i}: bare 'pip install' found: {stripped}")
+
+    def test_semantic_reindex_refreshes_memory_entries(self):
+        """Per-entry memory index must refresh with the session index; otherwise shadow mode silently goes static."""
+        path = os.path.join(PKG, "scripts", "semantic_reindex.sh")
+        with open(path) as f:
+            content = f.read()
+        self.assertIn("MEMORY_INDEX_SCRIPT", content)
+        self.assertIn("memory_entry_index.py", content)
+        self.assertIn("memory-entry index step", content)
 
     def test_no_hardcoded_emeka_path(self):
         """No /Users/emeka hardcoded in install.sh."""

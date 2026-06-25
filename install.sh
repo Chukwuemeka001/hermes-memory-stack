@@ -7,6 +7,16 @@ set -euo pipefail
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 export HERMES_HOME
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SEMANTIC_PYTHON="${HERMES_SEMANTIC_PYTHON:-}"
+if [ -z "$SEMANTIC_PYTHON" ]; then
+    if command -v python3.14 >/dev/null 2>&1; then
+        SEMANTIC_PYTHON="$(command -v python3.14)"
+    elif [ -x /opt/homebrew/bin/python3.14 ]; then
+        SEMANTIC_PYTHON="/opt/homebrew/bin/python3.14"
+    else
+        SEMANTIC_PYTHON="$(command -v python3)"
+    fi
+fi
 SCRIPTS_DIR="$HERMES_HOME/scripts"
 SKILLS_DIR="$HERMES_HOME/skills/memory-stack"
 CRONS_DIR="$HERMES_HOME/crons"
@@ -31,11 +41,12 @@ ensure_dirs() {
 install_semantic() {
     log "Installing semantic retrieval..."
 
-    # Check dependencies — use python3 -m pip to match the interpreter
-    if ! python3 -c "import chromadb" 2>/dev/null; then
-        warn "chromadb not found. Installing via python3 -m pip..."
-        python3 -m pip install --user chromadb sentence-transformers 2>/dev/null || \
-            python3 -m pip install chromadb sentence-transformers
+    # Check dependencies in the semantic interpreter — Hermes' agent venv may be Python 3.11
+    # without ChromaDB, while semantic retrieval is intentionally installed under Python 3.14.
+    if ! "$SEMANTIC_PYTHON" -c "import chromadb, sentence_transformers" 2>/dev/null; then
+        warn "chromadb/sentence-transformers not found for $SEMANTIC_PYTHON. Installing via module pip..."
+        "$SEMANTIC_PYTHON" -m pip install --user chromadb sentence-transformers 2>/dev/null || \
+            "$SEMANTIC_PYTHON" -m pip install chromadb sentence-transformers
     fi
 
     # Copy scripts
@@ -61,22 +72,22 @@ install_semantic() {
 
     # Run initial index (HERMES_HOME is exported at top of installer)
     log "Running initial session index..."
-    python3 "$SCRIPTS_DIR/semantic_index.py" || \
+    "$SEMANTIC_PYTHON" "$SCRIPTS_DIR/semantic_index.py" || \
         warn "Initial session index failed — may need chromadb deps. Run manually after install."
 
     log "Running initial memory-entry index..."
-    python3 "$SCRIPTS_DIR/memory_entry_index.py" index --home "$HERMES_HOME" || \
+    "$SEMANTIC_PYTHON" "$SCRIPTS_DIR/memory_entry_index.py" index --home "$HERMES_HOME" || \
         warn "Initial memory-entry index failed — run manually after install."
 
     # Start daemon (nohup so it survives shell exit)
     log "Starting semantic daemon..."
-    nohup python3 "$SCRIPTS_DIR/semantic_query.py" --serve \
+    nohup "$SEMANTIC_PYTHON" "$SCRIPTS_DIR/semantic_query.py" --serve \
         > "$LOGS_DIR/semantic_daemon.log" 2>&1 &
     disown
     sleep 3
 
     # Verify (HERMES_HOME is exported, scripts read it from env)
-    if python3 "$SCRIPTS_DIR/semantic_query.py" --ping >/dev/null 2>&1; then
+    if "$SEMANTIC_PYTHON" "$SCRIPTS_DIR/semantic_query.py" --ping >/dev/null 2>&1; then
         log "✓ Semantic retrieval installed and daemon running"
     else
         warn "Daemon started but ping failed — check $LOGS_DIR/semantic_daemon.log"

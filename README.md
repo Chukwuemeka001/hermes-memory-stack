@@ -19,7 +19,7 @@ This is the tool.
 | **Shadow-mode telemetry** | Logs full-vs-projected memory side-by-side while keeping full memory active |
 | **Honesty harness** | Measures required-fact recall, pin survival, token savings, and optional answer-quality preservation |
 | **Health monitoring** | Capacity alerts, drift detection, cron automation |
-| **Semantic retrieval** | Find memories by concept, not just keywords |
+| **Semantic retrieval** | Session + per-entry memory search by concept, with Python 3.14 fallback from lean agent venvs |
 
 ## Evaluation snapshot
 
@@ -29,7 +29,7 @@ Current headline numbers:
 
 | Metric | Result |
 |---|---:|
-| Full test suite | **383/383 passing** |
+| Full test suite | **384/384 passing** |
 | Tier-1 deterministic harness | **WARN** — 9 PASS / 5 WARN / 0 FAIL |
 | Query-aware required-fact recall | **82.1%** |
 | Query-aware harness token savings | **27.8%** |
@@ -216,14 +216,14 @@ python3 scripts/memory_harness.py --tier2 --tier2-grader claude-cli \
   --tier2-task safety-leaked-api-key --tier2-timeout 180 --json
 ```
 
-**383 tests passing.** Unit/E2E tests use synthetic data and never touch live memory by default.
+**384 tests passing.** Unit/E2E tests use synthetic data and never touch live memory by default.
 
 ## What's included
 
 | Category | Files |
 |---|---|
 | Scripts | 22 Python + 6 shell |
-| Tests | 14 test files (383 tests) |
+| Tests | 14 test files (384 tests) |
 | Skills | 12 operator docs |
 | Crons | 5 no-agent definitions |
 | Plans | 5 design documents |

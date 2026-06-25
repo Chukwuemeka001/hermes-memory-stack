@@ -3,8 +3,9 @@
 # semantic_reindex.sh — refresh the Hermes semantic session index (cron-safe).
 #
 # Runs scripts/semantic_index.py (incremental by default) over the default
-# state.db plus every profile state.db, then bounces the warm query daemon so
-# the freshly-added vectors become visible. Designed for an unattended cron /
+# state.db plus every profile state.db, refreshes the per-entry MEMORY.md/USER.md
+# semantic index, then bounces the warm query daemon so freshly-added session
+# vectors become visible. Designed for an unattended cron /
 # routine entry with no_agent: true.
 #
 # The heavy deps (chromadb, sentence_transformers) live only under system
@@ -33,6 +34,7 @@ SCRIPTS_DIR="$HERMES_HOME/scripts"
 LOG_DIR="$HERMES_HOME/logs"
 LOG_FILE="$LOG_DIR/semantic_reindex.log"
 INDEX_SCRIPT="$SCRIPTS_DIR/semantic_index.py"
+MEMORY_INDEX_SCRIPT="$SCRIPTS_DIR/memory_entry_index.py"
 QUERY_SCRIPT="$SCRIPTS_DIR/semantic_query.py"
 PID_FILE="$HERMES_HOME/chroma/semantic.pid"
 DAEMON_LOG="$LOG_DIR/semantic_daemon.log"
@@ -73,6 +75,10 @@ if [ ! -f "$INDEX_SCRIPT" ]; then
     log "FATAL: indexer not found at $INDEX_SCRIPT"
     exit 2
 fi
+if [ ! -f "$MEMORY_INDEX_SCRIPT" ]; then
+    log "FATAL: memory entry indexer not found at $MEMORY_INDEX_SCRIPT"
+    exit 2
+fi
 
 # --- Index ------------------------------------------------------------------
 RESET_FLAG=""
@@ -95,13 +101,34 @@ else
 fi
 INDEX_RC=$?
 if [ "$INDEX_RC" -eq 0 ]; then
-    log "index step: OK"
+    log "session index step: OK"
 else
-    log "index step: FAILED (rc=$INDEX_RC)"
+    log "session index step: FAILED (rc=$INDEX_RC)"
 fi
 
+log "indexing hot-memory entries ..."
+MEM_RESET_FLAG=""
+if [ "${SEMANTIC_REINDEX_RESET:-0}" = "1" ]; then
+    MEM_RESET_FLAG="--reset"
+fi
+if [ -n "$TIMEOUT_BIN" ]; then
+    "$TIMEOUT_BIN" "${SEMANTIC_REINDEX_TIMEOUT:-900}" "$PY" "$MEMORY_INDEX_SCRIPT" index --home "$HERMES_HOME" $MEM_RESET_FLAG >>"$LOG_FILE" 2>&1
+else
+    "$PY" "$MEMORY_INDEX_SCRIPT" index --home "$HERMES_HOME" $MEM_RESET_FLAG >>"$LOG_FILE" 2>&1
+fi
+MEMORY_INDEX_RC=$?
+if [ "$MEMORY_INDEX_RC" -eq 0 ]; then
+    log "memory-entry index step: OK"
+else
+    log "memory-entry index step: FAILED (rc=$MEMORY_INDEX_RC)"
+fi
+
+COMBINED_RC=0
+if [ "$INDEX_RC" -ne 0 ]; then COMBINED_RC="$INDEX_RC"; fi
+if [ "$COMBINED_RC" -eq 0 ] && [ "$MEMORY_INDEX_RC" -ne 0 ]; then COMBINED_RC="$MEMORY_INDEX_RC"; fi
+
 # --- Bounce the warm daemon so new vectors are visible ----------------------
-if [ "${SEMANTIC_REINDEX_NO_DAEMON:-0}" != "1" ] && [ "$INDEX_RC" -eq 0 ]; then
+if [ "${SEMANTIC_REINDEX_NO_DAEMON:-0}" != "1" ] && [ "$COMBINED_RC" -eq 0 ]; then
     if [ -f "$PID_FILE" ]; then
         OLD_PID="$(cat "$PID_FILE" 2>/dev/null || true)"
         # Only signal a PID that is actually our daemon: a stale pidfile left by
@@ -138,5 +165,5 @@ else
     log "daemon bounce skipped"
 fi
 
-log "done (index rc=$INDEX_RC)"
-exit "$INDEX_RC"
+log "done (session index rc=$INDEX_RC, memory index rc=$MEMORY_INDEX_RC)"
+exit "$COMBINED_RC"

@@ -349,6 +349,7 @@ class TestContextAwareProjection(unittest.TestCase):
         self.assertEqual(refs["memory#1"]["components"]["relevance"], 1.0)
         self.assertEqual(refs["memory#1"]["relevance_source"], "content_hash")
         self.assertIn("memories-index:1 hits", rep["relevance_source"])
+        self.assertIn("via injected", rep["relevance_source"])
 
     def test_no_query_is_static_fallback(self):
         root = make_home(memory_entries=[PREF_HIGH, STATUS_LOW])

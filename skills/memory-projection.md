@@ -34,6 +34,7 @@ highest-value entries that fit a **token budget** (typically 500–2,000 tokens)
 
 Script: `scripts/memory_project.py` (stdlib only; no LLM, no network).
 Shadow telemetry: `scripts/memory_shadow.py` (computes full-vs-projected but keeps FULL active).
+Semantic fallback: when Hermes runs under a lean Python 3.11 agent venv without ChromaDB, `memory_project.py` calls `memory_entry_index.py search` through `HERMES_SEMANTIC_PYTHON` / `python3.14` and reports `via subprocess:python3.14` in `relevance_source`.
 Reuses `memory_audit.py` (scoring dimensions) and `temporal_memory.py` (recency).
 
 ## Why this is the highest-leverage feature

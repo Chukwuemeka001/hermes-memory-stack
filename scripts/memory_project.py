@@ -46,6 +46,8 @@ import json
 import math
 import os
 import re
+import shutil
+import subprocess
 import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -350,6 +352,71 @@ def projection_score(components: dict) -> float:
         + W_RELEVANCE * components.get("relevance", 0.0))
 
 
+def _local_chromadb_available() -> bool:
+    try:
+        import chromadb  # noqa: F401,WPS433
+        import sentence_transformers  # noqa: F401,WPS433
+        return True
+    except Exception:
+        return False
+
+
+def _semantic_python_candidates() -> list[str]:
+    explicit = os.environ.get("HERMES_MEMORY_ENTRY_PYTHON") or os.environ.get("HERMES_SEMANTIC_PYTHON")
+    candidates = [explicit] if explicit else []
+    candidates.extend(["python3.14", "/opt/homebrew/bin/python3.14", "/opt/homebrew/bin/python3"])
+    out = []
+    seen = set()
+    for c in candidates:
+        if not c or c in seen:
+            continue
+        seen.add(c)
+        resolved = shutil.which(c) if not os.path.isabs(c) else c
+        if resolved and os.path.exists(resolved) and os.path.realpath(resolved) != os.path.realpath(sys.executable):
+            out.append(resolved)
+    return out
+
+
+def _subprocess_memory_hits(home: str, query: str, *, n_results: int) -> tuple[list, str]:
+    """Search entry memory through a Python with Chroma deps.
+
+    Hermes often runs the agent in Python 3.11 without ChromaDB while the semantic
+    stack is installed under Python 3.14. Projection should still get semantic
+    relevance, so fall back to the memory_entry_index CLI with stderr isolated.
+    """
+    if os.environ.get("HERMES_MEMORY_ENTRY_SUBPROCESS", "1") in {"0", "false", "False"}:
+        return [], "subprocess-disabled"
+    if os.environ.get("_HERMES_MEMORY_ENTRY_SUBPROCESS_CHILD"):
+        return [], "subprocess-recursion-guard"
+    script = os.path.join(_HERE, "memory_entry_index.py")
+    if not os.path.exists(script):
+        return [], "subprocess-missing-script"
+    if not os.path.isdir(os.path.join(home, "chroma", "sessions")):
+        return [], "no-memory-index-dir"
+    last = "no-python3.14"
+    for py in _semantic_python_candidates():
+        env = os.environ.copy()
+        env["HERMES_HOME"] = home
+        env["_HERMES_MEMORY_ENTRY_SUBPROCESS_CHILD"] = "1"
+        try:
+            r = subprocess.run(
+                [py, script, "search", query, "--home", home, "--n", str(max(1, int(n_results))), "--json"],
+                capture_output=True, text=True, timeout=float(os.environ.get("HERMES_MEMORY_ENTRY_TIMEOUT", "45")), env=env,
+            )
+        except Exception as e:  # pragma: no cover - environment dependent
+            last = f"{os.path.basename(py)}:{type(e).__name__}:{e}"
+            continue
+        if r.returncode == 0:
+            try:
+                payload = json.loads(r.stdout or "{}")
+                return payload.get("results") or [], f"subprocess:{os.path.basename(py)}"
+            except Exception as e:
+                last = f"{os.path.basename(py)}:bad-json:{e}"
+        else:
+            last = f"{os.path.basename(py)}:exit{r.returncode}:{(r.stderr or r.stdout)[:160]}"
+    return [], last
+
+
 # --------------------------------------------------------------------------- #
 # Phase 2b relevance — optional semantic closeness to the live task/query.      #
 # --------------------------------------------------------------------------- #
@@ -368,11 +435,23 @@ def build_relevance_index(home: str, query: str | None, relevance_hits: list | N
         return {"by_hash": {}, "by_ref": {}}, "disabled:no-query"
     try:
         hits = relevance_hits
+        source = "injected"
         if hits is None:
-            import memory_entry_index as MEI  # noqa: WPS433
-            hits = MEI.search_memories(str(query), home, n_results=n_results)
+            if not _local_chromadb_available():
+                hits, sub_note = _subprocess_memory_hits(home, str(query), n_results=n_results)
+                source = sub_note if hits else f"no-local-chromadb+{sub_note}"
+            else:
+                import memory_entry_index as MEI  # noqa: WPS433
+                hits = MEI.search_memories(str(query), home, n_results=n_results)
+                source = "direct"
+                if not hits:
+                    hits, sub_note = _subprocess_memory_hits(home, str(query), n_results=n_results)
+                    source = sub_note if hits else f"direct-empty+{sub_note}"
     except Exception as e:
-        return {"by_hash": {}, "by_ref": {}}, f"unavailable:{e}"
+        hits, sub_note = _subprocess_memory_hits(home, str(query), n_results=n_results)
+        if not hits:
+            return {"by_hash": {}, "by_ref": {}}, f"unavailable:{e};{sub_note}"
+        source = sub_note
 
     by_hash, by_ref = {}, {}
     for h in hits or []:
@@ -387,7 +466,7 @@ def build_relevance_index(home: str, query: str | None, relevance_hits: list | N
             by_hash[ch] = max(score, by_hash.get(ch, 0.0))
         if ref:
             by_ref[ref] = max(score, by_ref.get(ref, 0.0))
-    return {"by_hash": by_hash, "by_ref": by_ref}, f"memories-index:{len(hits or [])} hits"
+    return {"by_hash": by_hash, "by_ref": by_ref}, f"memories-index:{len(hits or [])} hits via {source}"
 
 
 def relevance_for(text: str, ref: str, rel_index: dict) -> tuple[float, str]:

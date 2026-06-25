@@ -22,14 +22,16 @@ This evaluation builds on that direction at the next layer: once memory operatio
 
 - deterministic projection telemetry,
 - public honesty fixtures,
-- optional model-backed answer-quality grading, and
+- optional model-backed answer-quality grading,
+- live session semantic retrieval (`sessions` collection),
+- live per-entry memory semantic retrieval (`memories` collection), and
 - shadow-mode full-vs-projected logging before live prompt replacement.
 
 The short version:
 
 | Result | Value |
 |---|---:|
-| Full test suite | **383/383 passing** |
+| Full test suite | **384/384 passing** |
 | Tier-1 deterministic tasks | **14** |
 | Tier-1 overall | **WARN** — 9 PASS / 5 WARN / 0 FAIL |
 | Query-aware required-fact recall | **82.1%** |
@@ -73,7 +75,7 @@ python3 -m unittest discover -s tests -v
 Current result:
 
 ```text
-Ran 383 tests in 38.599s
+Ran 384 tests in 23.954s
 OK
 ```
 
