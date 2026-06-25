@@ -254,11 +254,57 @@ def _hit_from(chroma_id, document, metadata, distance) -> dict:
     }
 
 
-def search_memories(query: str, home: str | None = None, *, n_results: int = 5, collection=None, model=None) -> list[dict]:
+def _daemon_search_memories(query: str, *, n_results: int, where: dict | None = None) -> list[dict] | None:
+    """Ask the warm semantic daemon for memory-entry hits.
+
+    Returns None when the daemon/path is unavailable so callers can fall back to
+    the cold direct Chroma path. Returned hits are handle-first and tagged with
+    ``__search_source=daemon`` for projection telemetry.
+    """
+    try:
+        import semantic_query as SQ  # noqa: WPS433
+        resp = SQ._daemon_request({
+            "mode": "semantic",
+            "collection": COLLECTION_NAME,
+            "query": query,
+            "n": max(1, int(n_results)),
+            "where": where or None,
+            "fields": "handle",
+        }, timeout=float(os.environ.get("HERMES_MEMORY_ENTRY_DAEMON_TIMEOUT", "8")))
+    except Exception:
+        return None
+    if not resp.get("ok") or not isinstance(resp.get("results"), list):
+        return None
+    out = []
+    for h in resp.get("results") or []:
+        out.append({
+            "entry_id": h.get("chroma_id") or h.get("entry_id") or "",
+            "entry_ref": h.get("entry_ref", ""),
+            "store": h.get("store", ""),
+            "content_hash": h.get("content_hash", ""),
+            "fact_key": h.get("fact_key", ""),
+            "kind": h.get("kind", ""),
+            "preview": h.get("preview", ""),
+            "source_path": h.get("source_path", ""),
+            "score": h.get("score"),
+            "distance": h.get("distance"),
+            # Handle-only hot path: intentionally omit full document/body.
+            "document": "",
+            "__search_source": "daemon",
+        })
+    return out
+
+
+def search_memories(query: str, home: str | None = None, *, n_results: int = 5,
+                    collection=None, model=None, where: dict | None = None) -> list[dict]:
     """Semantic top-k over indexed memory entries. Returns [] on any miss."""
     if not query or not query.strip():
         return []
     home = hermes_home(home)
+    if collection is None and model is None and os.environ.get("HERMES_MEMORY_ENTRY_DAEMON", "1") not in {"0", "false", "False"}:
+        hits = _daemon_search_memories(query, n_results=n_results, where=where)
+        if hits is not None:
+            return hits
     try:
         collection = collection or _get_collection(home)
         model = model or _get_model()
@@ -266,6 +312,7 @@ def search_memories(query: str, home: str | None = None, *, n_results: int = 5, 
         res = collection.query(
             query_embeddings=q_emb,
             n_results=max(1, int(n_results)),
+            where=where,
             include=["documents", "metadatas", "distances"],
         )
     except Exception as e:
@@ -275,7 +322,10 @@ def search_memories(query: str, home: str | None = None, *, n_results: int = 5, 
     docs = (res.get("documents") or [[]])[0]
     metas = (res.get("metadatas") or [[]])[0]
     dists = (res.get("distances") or [[]])[0]
-    return [_hit_from(ids[i], docs[i] if i < len(docs) else "", metas[i] if i < len(metas) else {}, dists[i] if i < len(dists) else None) for i in range(len(ids))]
+    hits = [_hit_from(ids[i], docs[i] if i < len(docs) else "", metas[i] if i < len(metas) else {}, dists[i] if i < len(dists) else None) for i in range(len(ids))]
+    for h in hits:
+        h["__search_source"] = "direct"
+    return hits
 
 
 def main(argv: Iterable[str] | None = None) -> int:

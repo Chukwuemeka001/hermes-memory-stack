@@ -60,6 +60,7 @@ RRF_K = 60
 _chroma_client = None
 _model = None
 _collection = None
+_collections = {}
 
 
 def _log(msg: str) -> None:
@@ -79,15 +80,28 @@ def _get_chroma():
     return _chroma_client
 
 
-def _get_collection():
-    """Return the sessions collection, or None if it has never been indexed."""
+def _get_named_collection(name: str = COLLECTION_NAME):
+    """Return a named Chroma collection, or None if it has never been indexed.
+
+    The daemon warms both the session-level ``sessions`` collection and the
+    per-entry hot-memory ``memories`` collection from the same Chroma root.
+    Handles are cached by name but reset together after reindex/rebuild.
+    """
     global _collection
-    if _collection is None:
+    name = str(name or COLLECTION_NAME)
+    if name not in _collections:
         try:
-            _collection = _get_chroma().get_collection(COLLECTION_NAME)
+            _collections[name] = _get_chroma().get_collection(name)
         except Exception:
             return None
-    return _collection
+    if name == COLLECTION_NAME:
+        _collection = _collections.get(name)
+    return _collections.get(name)
+
+
+def _get_collection():
+    """Return the sessions collection, or None if it has never been indexed."""
+    return _get_named_collection(COLLECTION_NAME)
 
 
 def _reset_collection_cache():
@@ -99,8 +113,9 @@ def _reset_collection_cache():
     reset and re-fetch so the daemon self-heals instead of silently serving
     empty results until a manual restart.
     """
-    global _collection, _chroma_client
+    global _collection, _chroma_client, _collections
     _collection = None
+    _collections = {}
     _chroma_client = None
 
 
@@ -113,7 +128,7 @@ def _get_model():
     return _model
 
 
-def _hit_from(chroma_id, document, metadata, distance) -> dict:
+def _hit_from(chroma_id, document, metadata, distance, *, include_document: bool = True) -> dict:
     """Shape one ChromaDB hit into the public result dict."""
     metadata = metadata or {}
     try:
@@ -121,7 +136,7 @@ def _hit_from(chroma_id, document, metadata, distance) -> dict:
     except (TypeError, ValueError):
         distance = None
     score = round(1.0 - distance, 4) if distance is not None else None
-    return {
+    hit = {
         # bare session id (composite chroma id splits on '::') — what the DB knows
         "session_id": metadata.get("session_id") or str(chroma_id).split("::", 1)[-1],
         "chroma_id": str(chroma_id),
@@ -134,11 +149,29 @@ def _hit_from(chroma_id, document, metadata, distance) -> dict:
         "db_path": metadata.get("db_path", ""),
         "parent_session_id": metadata.get("parent_session_id", ""),
         "started_at": metadata.get("started_at", 0),
-        "document": document,
     }
+    # Memory-entry metadata is additive when the daemon queries the ``memories``
+    # collection. Session callers ignore these fields.
+    for key in ("entry_ref", "store", "store_key", "content_hash", "fact_key",
+                "kind", "key", "source_path", "chars", "index"):
+        if key in metadata:
+            hit[key] = metadata.get(key)
+    if include_document:
+        hit["document"] = document
+    return hit
 
 
-def semantic_search(query: str, n_results: int = 10, n: int = None, db_path: str = None) -> list:
+def _merge_where(left: dict | None, right: dict | None) -> dict | None:
+    if not left:
+        return right
+    if not right:
+        return left
+    return {"$and": [left, right]}
+
+
+def semantic_search(query: str, n_results: int = 10, n: int = None, db_path: str = None,
+                    *, collection_name: str = COLLECTION_NAME, where: dict | None = None,
+                    include_document: bool = True) -> list:
     """Pure vector search. Returns ranked hits (best first). [] on any miss.
 
     ``db_path`` scopes results to a single state.db (matches the value stored at
@@ -150,9 +183,9 @@ def semantic_search(query: str, n_results: int = 10, n: int = None, db_path: str
     if not query or not query.strip():
         return []
 
-    where = None
+    query_where = where
     if db_path:
-        where = {"db_path": os.path.realpath(os.path.expanduser(db_path))}
+        query_where = _merge_where(query_where, {"db_path": os.path.realpath(os.path.expanduser(db_path))})
 
     try:
         model = _get_model()
@@ -166,14 +199,14 @@ def semantic_search(query: str, n_results: int = 10, n: int = None, db_path: str
     # handle. On error, refresh the cache and try once more before giving up.
     res = None
     for attempt in (1, 2):
-        collection = _get_collection()
+        collection = _get_named_collection(collection_name)
         if collection is None:
             return []
         try:
             res = collection.query(
                 query_embeddings=q_emb,
                 n_results=max(1, int(n_results)),
-                where=where,
+                where=query_where,
                 include=["documents", "metadatas", "distances"],
             )
             break
@@ -194,7 +227,7 @@ def semantic_search(query: str, n_results: int = 10, n: int = None, db_path: str
         doc = docs[i] if i < len(docs) else None
         meta = metas[i] if i < len(metas) else {}
         dist = dists[i] if i < len(dists) else None
-        hits.append(_hit_from(ids[i], doc, meta, dist))
+        hits.append(_hit_from(ids[i], doc, meta, dist, include_document=include_document))
     return hits
 
 
@@ -205,6 +238,9 @@ def hybrid_search(
     n: int = None,
     k: int = RRF_K,
     db_path: str = None,
+    collection_name: str = COLLECTION_NAME,
+    where: dict | None = None,
+    include_document: bool = True,
 ) -> list:
     """Reciprocal Rank Fusion of semantic + FTS5 rankings, keyed by session_id.
 
@@ -213,7 +249,9 @@ def hybrid_search(
     """
     if n is not None:
         n_results = n
-    semantic_hits = semantic_search(query, n_results=max(n_results * 2, n_results), db_path=db_path)
+    semantic_hits = semantic_search(query, n_results=max(n_results * 2, n_results), db_path=db_path,
+                                    collection_name=collection_name, where=where,
+                                    include_document=include_document)
 
     scores: dict = {}
     info: dict = {}
@@ -300,16 +338,22 @@ def _handle_request(req: dict) -> dict:
                 "dim": (len(vecs[0]) if vecs else 0), "embeddings": vecs}
     query = req.get("query") or ""
     db_path = req.get("db_path") or None
+    collection_name = str(req.get("collection") or COLLECTION_NAME)
+    where = req.get("where") if isinstance(req.get("where"), dict) else None
+    include_document = req.get("fields") != "handle"
     try:
         n = int(req.get("n") or 10)
     except (TypeError, ValueError):
         n = 10
     n = max(1, min(n, 200))
     if mode == "hybrid":
-        hits = hybrid_search(query, fts_results=req.get("fts") or None, n_results=n, db_path=db_path)
+        hits = hybrid_search(query, fts_results=req.get("fts") or None, n_results=n, db_path=db_path,
+                             collection_name=collection_name, where=where,
+                             include_document=include_document)
     else:
-        hits = semantic_search(query, n_results=n, db_path=db_path)
-    return {"ok": True, "mode": mode, "count": len(hits), "results": hits}
+        hits = semantic_search(query, n_results=n, db_path=db_path, collection_name=collection_name,
+                               where=where, include_document=include_document)
+    return {"ok": True, "mode": mode, "collection": collection_name, "count": len(hits), "results": hits}
 
 
 def _collection_counts() -> dict:

@@ -18,6 +18,7 @@ This is the tool.
 | **Memory projection** | Injects a compact working set instead of brute-force full memory |
 | **Shadow-mode telemetry** | Logs full-vs-projected memory side-by-side while keeping full memory active |
 | **Cheap dynamic search map** | Tiny read-only router showing where knowledge lives and which search lane to use before deeper retrieval |
+| **Warm semantic deep path** | One daemon serves both `sessions` and `memories`; memory-entry lane returns handle-only hits without cold MiniLM reloads |
 | **Honesty harness** | Measures required-fact recall, pin survival, token savings, and optional answer-quality preservation |
 | **Health monitoring** | Capacity alerts, drift detection, cron automation |
 | **Semantic retrieval** | Session + per-entry memory search by concept, with Python 3.14 fallback from lean agent venvs |
@@ -30,7 +31,7 @@ Current headline numbers:
 
 | Metric | Result |
 |---|---:|
-| Full test suite | **425/425 passing** |
+| Full test suite | **429/429 passing** |
 | Tier-1 deterministic harness | **WARN** — 9 PASS / 5 WARN / 0 FAIL |
 | Query-aware required-fact recall | **82.1%** |
 | Query-aware harness token savings | **27.8%** |
@@ -228,6 +229,10 @@ python3 scripts/memory_harness.py --json
 # Cheap dynamic search map: route a query before spending on retrieval
 python3 scripts/memory_search_map.py query --home ~/.hermes --query "semantic retrieval shadow mode" --json
 
+# Warm semantic deep path: memory-entry search should use daemon, not cold model load
+python3 ~/.hermes/scripts/memory_entry_index.py search "semantic retrieval shadow mode" --home ~/.hermes --n 5 --json
+python3 ~/.hermes/scripts/memory_project.py --home ~/.hermes --query "semantic retrieval shadow mode" --budget 800 --json
+
 # Shadow-mode dogfood: log full-vs-projected telemetry while keeping FULL active
 python3 scripts/memory_shadow.py --home ~/.hermes \
   --query "current user turn" --budget 1500 --json
@@ -245,14 +250,14 @@ python3 scripts/memory_harness.py --tier2 --tier2-grader claude-cli \
   --tier2-task safety-leaked-api-key --tier2-timeout 180 --json
 ```
 
-**425 tests passing.** Unit/E2E tests use synthetic data and never touch live memory by default.
+**429 tests passing.** Unit/E2E tests use synthetic data and never touch live memory by default.
 
 ## What's included
 
 | Category | Files |
 |---|---|
 | Scripts | 25 Python + 6 shell |
-| Tests | 17 test files (425 tests) |
+| Tests | 18 test files (429 tests) |
 | Skills | 12 operator docs |
 | Crons | 5 no-agent definitions |
 | Plans | 5 design documents |

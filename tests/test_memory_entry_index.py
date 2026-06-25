@@ -74,7 +74,8 @@ class FakeCollection:
         for cid in ids:
             self.rows.pop(cid, None)
 
-    def query(self, query_embeddings, n_results, include):
+    def query(self, query_embeddings, n_results, include, where=None):
+        self.last_where = where
         ids = list(self.rows)[:n_results]
         return {
             "ids": [ids],
@@ -157,7 +158,46 @@ class TestIndexMemories(unittest.TestCase):
         self.assertEqual(len(hits), 1)
         self.assertEqual(hits[0]["store"], "MEMORY.md")
         self.assertIn("Trading safety", hits[0]["document"])
+        self.assertEqual(hits[0]["__search_source"], "direct")
         self.assertGreater(hits[0]["score"], 0.0)
+
+    def test_daemon_search_is_preferred_and_handle_only(self):
+        root = make_home(memory_entries=["Memory projection uses semantic relevance."])
+        calls = []
+
+        def fake_daemon(req, timeout=30.0):
+            calls.append((req, timeout))
+            return {
+                "ok": True,
+                "results": [{
+                    "chroma_id": "MEMORY.md::abc",
+                    "entry_ref": "memory#1",
+                    "store": "MEMORY.md",
+                    "content_hash": "abc",
+                    "fact_key": "memory_projection",
+                    "preview": "Memory projection uses semantic relevance.",
+                    "score": 0.91,
+                    "distance": 0.09,
+                    "document": "SHOULD_NOT_CROSS_HANDLE_PATH",
+                }],
+            }
+
+        old = mei.sys.modules.get("semantic_query")
+        import types
+        mei.sys.modules["semantic_query"] = types.SimpleNamespace(_daemon_request=fake_daemon)
+        try:
+            hits = mei.search_memories("projection", root, n_results=3, where={"store": "MEMORY.md"})
+        finally:
+            if old is None:
+                mei.sys.modules.pop("semantic_query", None)
+            else:
+                mei.sys.modules["semantic_query"] = old
+        self.assertEqual(calls[0][0]["collection"], "memories")
+        self.assertEqual(calls[0][0]["fields"], "handle")
+        self.assertEqual(calls[0][0]["where"], {"store": "MEMORY.md"})
+        self.assertEqual(hits[0]["entry_ref"], "memory#1")
+        self.assertEqual(hits[0]["document"], "")
+        self.assertEqual(hits[0]["__search_source"], "daemon")
 
 
 if __name__ == "__main__":

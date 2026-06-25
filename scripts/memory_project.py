@@ -437,16 +437,19 @@ def build_relevance_index(home: str, query: str | None, relevance_hits: list | N
         hits = relevance_hits
         source = "injected"
         if hits is None:
-            if not _local_chromadb_available():
-                hits, sub_note = _subprocess_memory_hits(home, str(query), n_results=n_results)
-                source = sub_note if hits else f"no-local-chromadb+{sub_note}"
-            else:
+            try:
                 import memory_entry_index as MEI  # noqa: WPS433
                 hits = MEI.search_memories(str(query), home, n_results=n_results)
-                source = "direct"
-                if not hits:
-                    hits, sub_note = _subprocess_memory_hits(home, str(query), n_results=n_results)
-                    source = sub_note if hits else f"direct-empty+{sub_note}"
+                if hits:
+                    source = (hits[0].get("__search_source") or "direct")
+                else:
+                    source = "daemon-or-direct-empty"
+            except Exception as e:
+                hits = []
+                source = f"daemon-or-direct-error:{type(e).__name__}"
+            if not hits:
+                hits, sub_note = _subprocess_memory_hits(home, str(query), n_results=n_results)
+                source = sub_note if hits else f"{source}+{sub_note}"
     except Exception as e:
         hits, sub_note = _subprocess_memory_hits(home, str(query), n_results=n_results)
         if not hits:
