@@ -2,21 +2,22 @@
   "failures": [],
   "inputs": {
     "errors": [],
-    "events": 7,
-    "shadow_events": 7
+    "events": 1,
+    "shadow_events": 1
   },
   "metrics": {
-    "answer_usage_events": 0,
-    "avg_full_tokens": 4648,
-    "avg_projected_tokens": 1184.71,
-    "avg_savings_pct": 74.5,
-    "avg_selected_entries": 20.71,
-    "avg_skipped_entries": 40.29,
+    "answer_usage_events": 1,
+    "avg_full_tokens": 17,
+    "avg_projected_tokens": 17,
+    "avg_savings_pct": 0.0,
+    "avg_selected_entries": 2,
+    "avg_skipped_entries": 0,
     "determinism_violations": 0,
     "duplicate_turns": 0,
-    "min_savings_pct": 74.5,
+    "min_answer_turns": 5,
+    "min_savings_pct": 0.0,
     "over_budget_events": 0,
-    "p95_projected_tokens": 1186.0,
+    "p95_projected_tokens": 17.0,
     "raw_block_events": 0,
     "safety_pin_drops": 0,
     "semantic_source_rate": 1.0,
@@ -37,7 +38,7 @@
     ]
   },
   "sources": {
-    "memories-index:20 hits via subprocess:python3.14": 7
+    "memories-index:0 hits via direct-empty+subprocess:python3.14": 1
   },
   "status": "WARN",
   "tool": "memory_shadow_report",
@@ -45,170 +46,18 @@
   "top_selected_refs": [
     [
       "memory#0",
-      7
-    ],
-    [
-      "memory#10",
-      7
-    ],
-    [
-      "memory#11",
-      7
-    ],
-    [
-      "memory#16",
-      7
-    ],
-    [
-      "memory#17",
-      7
-    ],
-    [
-      "memory#18",
-      7
-    ],
-    [
-      "memory#21",
-      7
-    ],
-    [
-      "memory#3",
-      7
-    ],
-    [
-      "memory#4",
-      7
-    ],
-    [
-      "memory#6",
-      7
+      1
     ],
     [
       "user#0",
-      7
-    ],
-    [
-      "memory#39",
-      6
-    ],
-    [
-      "memory#40",
-      6
-    ],
-    [
-      "memory#41",
-      6
-    ],
-    [
-      "memory#2",
-      5
-    ],
-    [
-      "memory#7",
-      5
-    ],
-    [
-      "memory#8",
-      5
-    ],
-    [
-      "user#10",
-      5
-    ],
-    [
-      "memory#22",
-      4
-    ],
-    [
-      "memory#31",
-      3
+      1
     ]
   ],
-  "top_skipped_refs": [
-    [
-      "memory#1",
-      7
-    ],
-    [
-      "memory#12",
-      7
-    ],
-    [
-      "memory#13",
-      7
-    ],
-    [
-      "memory#14",
-      7
-    ],
-    [
-      "memory#15",
-      7
-    ],
-    [
-      "memory#19",
-      7
-    ],
-    [
-      "memory#20",
-      7
-    ],
-    [
-      "memory#23",
-      7
-    ],
-    [
-      "memory#24",
-      7
-    ],
-    [
-      "memory#26",
-      7
-    ],
-    [
-      "memory#28",
-      7
-    ],
-    [
-      "memory#35",
-      7
-    ],
-    [
-      "memory#38",
-      7
-    ],
-    [
-      "memory#5",
-      7
-    ],
-    [
-      "memory#9",
-      7
-    ],
-    [
-      "user#1",
-      7
-    ],
-    [
-      "user#11",
-      7
-    ],
-    [
-      "user#12",
-      7
-    ],
-    [
-      "user#13",
-      7
-    ],
-    [
-      "user#15",
-      7
-    ]
-  ],
+  "top_skipped_refs": [],
   "top_used_missing_refs": [],
   "used_missing_examples": [],
   "warnings": [
-    "no answer_usage telemetry; cannot verify used-but-skipped context"
+    "average savings 0.0% below threshold 99.0%",
+    "only 1 answer_usage event(s); need >= 5 for rollout confidence"
   ]
 }

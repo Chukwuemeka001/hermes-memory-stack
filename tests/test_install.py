@@ -36,7 +36,9 @@ EXPECTED_SCRIPTS = [
     "memory_entry_index.py",
     "memory_project.py",
     "memory_shadow.py",
+    "memory_shadow_capture.py",
     "memory_shadow_report.py",
+    "memory_search_map.py",
     "memory_harness.py",
     "memory_harness_tasks.json",
     "semantic_reindex.sh",
@@ -114,7 +116,8 @@ class TestInstall(unittest.TestCase):
         self.assertEqual(r.returncode, 0, f"install failed: {r.stderr}")
         scripts_dir = os.path.join(self.home, "scripts")
         for name in ["state_db_remediate.py", "memory_audit.py", "memory_rewrite.py",
-                      "memory_health.py", "memory_project.py", "memory_shadow.py", "memory_harness.py",
+                      "memory_health.py", "memory_project.py", "memory_shadow.py", "memory_shadow_capture.py",
+                      "memory_search_map.py", "memory_harness.py",
                       "memory_harness_tasks.json", "memory_health_cron.sh",
                       "memory_maintenance.py", "memory_maintenance_cron.sh",
                       "memory_onboard.py",    # one-command Area 1→5 driver (INTEG-10)
@@ -137,7 +140,8 @@ class TestInstall(unittest.TestCase):
         env["HOME"] = self.tmp
         env["HERMES_HOME"] = self.home
         for name in ["memory_audit.py", "temporal_memory.py", "hermes_memory_intake_gate.py",
-                     "memory_onboard.py", "memory_project.py", "memory_shadow.py", "memory_harness.py"]:
+                     "memory_onboard.py", "memory_project.py", "memory_shadow.py", "memory_shadow_capture.py",
+                     "memory_search_map.py", "memory_harness.py"]:
             p = subprocess.run(["python3", os.path.join(scripts_dir, name), "--help"],
                                capture_output=True, text=True, timeout=30, env=env)
             self.assertEqual(p.returncode, 0,

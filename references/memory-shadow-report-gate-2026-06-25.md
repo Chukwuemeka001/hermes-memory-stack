@@ -38,6 +38,7 @@ Warnings:
 - savings below threshold
 - non-semantic/static relevance source
 - no `answer_usage` telemetry
+- fewer than 5 answer-aware turns by default
 - used-missing rate above threshold
 - skipped pinned entries requiring inspection
 

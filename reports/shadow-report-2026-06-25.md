@@ -6,14 +6,14 @@
 
 | Metric | Value |
 |---|---:|
-| Shadow events | 7 |
-| Avg savings | 74.5% |
-| Min savings | 74.5% |
-| Avg full tokens | 4648 |
-| Avg projected tokens | 1184.71 |
-| P95 projected tokens | 1186.0 |
+| Shadow events | 1 |
+| Avg savings | 0.0% |
+| Min savings | 0.0% |
+| Avg full tokens | 17 |
+| Avg projected tokens | 17 |
+| P95 projected tokens | 17.0 |
 | Semantic source rate | 100.0% |
-| Answer-usage events | 0 |
+| Answer-usage events | 1 |
 | Used-missing count | 0 |
 | Raw block events | 0 |
 | Over-budget events | 0 |
@@ -23,28 +23,19 @@
 
 ## Warnings
 
-- no answer_usage telemetry; cannot verify used-but-skipped context
+- average savings 0.0% below threshold 99.0%
+- only 1 answer_usage event(s); need >= 5 for rollout confidence
 
 ## Relevance sources
 
 | Source | Count |
 |---|---:|
-| `memories-index:20 hits via subprocess:python3.14` | 7 |
+| `memories-index:0 hits via direct-empty+subprocess:python3.14` | 1 |
 
 ## Top skipped refs
 
 | Ref | Count |
 |---|---:|
-| `memory#1` | 7 |
-| `memory#12` | 7 |
-| `memory#13` | 7 |
-| `memory#14` | 7 |
-| `memory#15` | 7 |
-| `memory#19` | 7 |
-| `memory#20` | 7 |
-| `memory#23` | 7 |
-| `memory#24` | 7 |
-| `memory#26` | 7 |
 
 ## Top used-but-missing refs
 

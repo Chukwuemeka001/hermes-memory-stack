@@ -63,7 +63,7 @@ class TestShadowReport(unittest.TestCase):
         return subprocess.run(["python3", SCRIPT, path, "--json", *args], capture_output=True, text=True, timeout=30)
 
     def test_pass_with_semantic_savings_and_no_missing(self):
-        path = self.write_jsonl([event(answer_usage={"used_missing_from_projection": []}) for _ in range(3)])
+        path = self.write_jsonl([event(f"t{i}", answer_usage={"used_missing_from_projection": []}) for i in range(5)])
         r = self.run_report(path)
         self.assertEqual(r.returncode, 0, r.stderr)
         data = json.loads(r.stdout)
@@ -126,7 +126,7 @@ class TestShadowReport(unittest.TestCase):
             event("t1", projected_sha="old", answer_usage={"used_missing_from_projection": []}),
         ]
         path = self.write_jsonl(rows)
-        r = self.run_report(path)
+        r = self.run_report(path, "--min-answer-turns", "1")
         data = json.loads(r.stdout)
         self.assertEqual(data["status"], "PASS")
         self.assertEqual(data["inputs"]["shadow_events"], 1)
@@ -135,7 +135,7 @@ class TestShadowReport(unittest.TestCase):
     def test_markdown_out_file(self):
         path = self.write_jsonl([event(answer_usage={"used_missing_from_projection": []})])
         out = os.path.join(os.path.dirname(path), "report.md")
-        r = subprocess.run(["python3", SCRIPT, path, "--out", out], capture_output=True, text=True, timeout=30)
+        r = subprocess.run(["python3", SCRIPT, path, "--out", out, "--min-answer-turns", "1"], capture_output=True, text=True, timeout=30)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue(os.path.exists(out))
         with open(out, encoding="utf-8") as fh:

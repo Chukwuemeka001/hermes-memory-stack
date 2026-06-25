@@ -96,7 +96,8 @@ def _collect_used_missing(event: dict) -> list[dict]:
 
 
 def summarize(events: list[dict], errors: list[dict], *, min_avg_savings: float,
-              max_missing_rate: float, require_semantic: bool = True) -> dict:
+              max_missing_rate: float, require_semantic: bool = True,
+              min_answer_turns: int = 5) -> dict:
     raw_shadow_events = [e for e in events if e.get("tool") == "memory_shadow" or e.get("mode") == "shadow"]
     duplicates = 0
     by_turn: dict[str, dict] = {}
@@ -188,6 +189,8 @@ def summarize(events: list[dict], errors: list[dict], *, min_avg_savings: float,
         warnings.append(f"semantic relevance source used for {semantic_rate:.0%} of turns")
     if answer_usage_events == 0:
         warnings.append("no answer_usage telemetry; cannot verify used-but-skipped context")
+    elif answer_usage_events < min_answer_turns:
+        warnings.append(f"only {answer_usage_events} answer_usage event(s); need >= {min_answer_turns} for rollout confidence")
     elif missing_rate > max_missing_rate:
         warnings.append(f"used-missing rate {missing_rate:.2f} exceeds threshold {max_missing_rate}")
     if skipped_pin_counts:
@@ -212,6 +215,7 @@ def summarize(events: list[dict], errors: list[dict], *, min_avg_savings: float,
             "avg_skipped_entries": _mean(skipped_counts),
             "semantic_source_rate": round(semantic_rate, 4),
             "answer_usage_events": answer_usage_events,
+            "min_answer_turns": min_answer_turns,
             "used_missing_count": len(missing_items),
             "used_missing_rate": round(missing_rate, 4),
             "raw_block_events": len(raw_block_events),
@@ -320,6 +324,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", help="write report to this file")
     p.add_argument("--min-avg-savings", type=float, default=40.0)
     p.add_argument("--max-missing-rate", type=float, default=0.10)
+    p.add_argument("--min-answer-turns", type=int, default=5, help="answer-aware events required before PASS (default 5)")
     p.add_argument("--allow-nonsemantic", action="store_true", help="do not warn when relevance source is static/non-semantic")
     p.add_argument("--strict", action="store_true", help="exit 1 on WARN as well as FAIL")
     p.add_argument("--version", action="version", version=f"%(prog)s {TOOL_VERSION}")
@@ -331,7 +336,8 @@ def main(argv=None) -> int:
     events, errors = load_events(args.paths)
     report = summarize(events, errors, min_avg_savings=args.min_avg_savings,
                        max_missing_rate=args.max_missing_rate,
-                       require_semantic=not args.allow_nonsemantic)
+                       require_semantic=not args.allow_nonsemantic,
+                       min_answer_turns=args.min_answer_turns)
     text = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) if args.json else render_markdown(report)
     if args.out:
         out = Path(os.path.expanduser(args.out))

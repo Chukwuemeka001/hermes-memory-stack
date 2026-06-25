@@ -17,6 +17,7 @@ This is the tool.
 | **Temporal versioning** | Tracks every memory change with rollback and diff |
 | **Memory projection** | Injects a compact working set instead of brute-force full memory |
 | **Shadow-mode telemetry** | Logs full-vs-projected memory side-by-side while keeping full memory active |
+| **Cheap dynamic search map** | Tiny read-only router showing where knowledge lives and which search lane to use before deeper retrieval |
 | **Honesty harness** | Measures required-fact recall, pin survival, token savings, and optional answer-quality preservation |
 | **Health monitoring** | Capacity alerts, drift detection, cron automation |
 | **Semantic retrieval** | Session + per-entry memory search by concept, with Python 3.14 fallback from lean agent venvs |
@@ -29,7 +30,7 @@ Current headline numbers:
 
 | Metric | Result |
 |---|---:|
-| Full test suite | **393/393 passing** |
+| Full test suite | **425/425 passing** |
 | Tier-1 deterministic harness | **WARN** — 9 PASS / 5 WARN / 0 FAIL |
 | Query-aware required-fact recall | **82.1%** |
 | Query-aware harness token savings | **27.8%** |
@@ -70,7 +71,7 @@ bash install.sh all
 ```
 
 This installs:
-- 23 Python scripts + 6 shell scripts
+- 25 Python scripts + 6 shell scripts
 - Semantic retrieval daemon (ChromaDB)
 - Auto-extraction (dry-run by default)
 - Temporal versioning
@@ -196,6 +197,23 @@ Scoring model:
 - Hot-fit (15%): ideal length for a hot pointer
 - Always-inject (15%): user preferences, routing config
 
+## The cheap dynamic search map
+
+When current context lacks what the agent needs, going deeper should stay cheap. `memory_search_map.py` is the first-pass router that sits *in front of* retrieval/projection: it reads a tiny <=1000-token map of where knowledge lives, then routes a query straight to the right lane.
+
+```bash
+# compact map of store health + freshness + top topics
+python3 scripts/memory_search_map.py build --home ~/.hermes --markdown
+
+# route a query → ranked lanes + exact next commands
+python3 scripts/memory_search_map.py query --home ~/.hermes --query "provider failover history" --json
+
+# validate store freshness/health
+python3 scripts/memory_search_map.py doctor --home ~/.hermes --json
+```
+
+Lanes: `memory-entry`, `session-semantic`, `temporal`, `notes-canonical`, `source-code`, and `spine`. It is read-only and stdlib-only: no LLM, no embedding load, no ChromaDB import; just a short daemon ping for semantic health.
+
 ## Testing
 
 ```bash
@@ -207,9 +225,17 @@ python3 -m unittest discover -s tests -v
 # Projection honesty harness
 python3 scripts/memory_harness.py --json
 
+# Cheap dynamic search map: route a query before spending on retrieval
+python3 scripts/memory_search_map.py query --home ~/.hermes --query "semantic retrieval shadow mode" --json
+
 # Shadow-mode dogfood: log full-vs-projected telemetry while keeping FULL active
 python3 scripts/memory_shadow.py --home ~/.hermes \
   --query "current user turn" --budget 1500 --json
+
+# Answer-aware shadow capture: append event and refresh Markdown/JSON report
+python3 scripts/memory_shadow_capture.py --home ~/.hermes \
+  --query "current user turn" --answer-file /tmp/final-answer.txt \
+  --out ~/.hermes/notes/memory-stack/shadow-projection-$(date +%F).jsonl
 
 # Shadow rollout report: summarize JSONL and decide PASS/WARN/FAIL
 python3 scripts/memory_shadow_report.py reports/shadow-projection-$(date +%F).jsonl --out reports/shadow-report-$(date +%F).md
@@ -219,14 +245,14 @@ python3 scripts/memory_harness.py --tier2 --tier2-grader claude-cli \
   --tier2-task safety-leaked-api-key --tier2-timeout 180 --json
 ```
 
-**393 tests passing.** Unit/E2E tests use synthetic data and never touch live memory by default.
+**425 tests passing.** Unit/E2E tests use synthetic data and never touch live memory by default.
 
 ## What's included
 
 | Category | Files |
 |---|---|
-| Scripts | 23 Python + 6 shell |
-| Tests | 15 test files (393 tests) |
+| Scripts | 25 Python + 6 shell |
+| Tests | 17 test files (425 tests) |
 | Skills | 12 operator docs |
 | Crons | 5 no-agent definitions |
 | Plans | 5 design documents |

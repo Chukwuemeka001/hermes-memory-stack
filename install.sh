@@ -55,7 +55,9 @@ install_semantic() {
     cp "$SCRIPT_DIR/scripts/memory_entry_index.py" "$SCRIPTS_DIR/"
     cp "$SCRIPT_DIR/scripts/memory_project.py" "$SCRIPTS_DIR/"
     cp "$SCRIPT_DIR/scripts/memory_shadow.py" "$SCRIPTS_DIR/"
+    cp "$SCRIPT_DIR/scripts/memory_shadow_capture.py" "$SCRIPTS_DIR/"
     cp "$SCRIPT_DIR/scripts/memory_shadow_report.py" "$SCRIPTS_DIR/"
+    cp "$SCRIPT_DIR/scripts/memory_search_map.py" "$SCRIPTS_DIR/"   # cheap dynamic search-map router
     cp "$SCRIPT_DIR/scripts/memory_harness.py" "$SCRIPTS_DIR/"
     cp "$SCRIPT_DIR/scripts/memory_harness_tasks.json" "$SCRIPTS_DIR/"
     cp "$SCRIPT_DIR/scripts/semantic_reindex.sh" "$SCRIPTS_DIR/"
@@ -64,7 +66,9 @@ install_semantic() {
     chmod +x "$SCRIPTS_DIR/memory_entry_index.py"
     chmod +x "$SCRIPTS_DIR/memory_project.py"
     chmod +x "$SCRIPTS_DIR/memory_shadow.py"
+    chmod +x "$SCRIPTS_DIR/memory_shadow_capture.py"
     chmod +x "$SCRIPTS_DIR/memory_shadow_report.py"
+    chmod +x "$SCRIPTS_DIR/memory_search_map.py"
     chmod +x "$SCRIPTS_DIR/memory_harness.py"
     chmod +x "$SCRIPTS_DIR/semantic_reindex.sh"
     cp "$SCRIPT_DIR/skills/"*.md "$SKILLS_DIR/" 2>/dev/null || true
@@ -153,7 +157,9 @@ install_remediation() {
     cp "$SCRIPT_DIR/scripts/memory_health.py" "$SCRIPTS_DIR/"
     cp "$SCRIPT_DIR/scripts/memory_project.py" "$SCRIPTS_DIR/"  # projection footer / Phase 1 engine
     cp "$SCRIPT_DIR/scripts/memory_shadow.py" "$SCRIPTS_DIR/"   # shadow-mode projection telemetry
+    cp "$SCRIPT_DIR/scripts/memory_shadow_capture.py" "$SCRIPTS_DIR/"  # answer-aware shadow capture + report refresh
     cp "$SCRIPT_DIR/scripts/memory_shadow_report.py" "$SCRIPTS_DIR/"  # rollout gate over shadow JSONL
+    cp "$SCRIPT_DIR/scripts/memory_search_map.py" "$SCRIPTS_DIR/"   # cheap dynamic search-map router
     cp "$SCRIPT_DIR/scripts/memory_harness.py" "$SCRIPTS_DIR/"  # Phase B projection honesty harness
     cp "$SCRIPT_DIR/scripts/memory_harness_tasks.json" "$SCRIPTS_DIR/"
     cp "$SCRIPT_DIR/scripts/memory_health_cron.sh" "$SCRIPTS_DIR/"
@@ -166,7 +172,9 @@ install_remediation() {
     chmod +x "$SCRIPTS_DIR/memory_health.py"
     chmod +x "$SCRIPTS_DIR/memory_project.py"
     chmod +x "$SCRIPTS_DIR/memory_shadow.py"
+    chmod +x "$SCRIPTS_DIR/memory_shadow_capture.py"
     chmod +x "$SCRIPTS_DIR/memory_shadow_report.py"
+    chmod +x "$SCRIPTS_DIR/memory_search_map.py"
     chmod +x "$SCRIPTS_DIR/memory_harness.py"
     chmod +x "$SCRIPTS_DIR/memory_health_cron.sh"
     chmod +x "$SCRIPTS_DIR/memory_maintenance.py"
@@ -226,7 +234,8 @@ install_verify() {
     # Check all core scripts exist and are importable
     for script in \
         state_db_remediate memory_audit memory_rewrite \
-        memory_health memory_maintenance memory_project memory_shadow memory_shadow_report \
+        memory_health memory_maintenance memory_project memory_shadow memory_shadow_capture memory_shadow_report \
+        memory_search_map \
         temporal_memory temporal_migrate temporal_migrate_onboard \
         memory_auto_extract hermes_memory_intake_gate \
         memory_entry_index semantic_index semantic_query; do

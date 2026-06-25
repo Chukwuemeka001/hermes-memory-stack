@@ -1,5 +1,31 @@
 # Cheap Dynamic Search Map — Design Note — 2026-06-25
 
+## STATUS: BUILT (2026-06-25)
+
+`scripts/memory_search_map.py` now implements this design. It ships in the semantic and remediation install tiers and is covered by `tests/test_memory_search_map.py`.
+
+```bash
+# compact map (JSON default; --markdown for the <=1000-token human view)
+python3 scripts/memory_search_map.py build  --home ~/.hermes --json
+python3 scripts/memory_search_map.py build  --home ~/.hermes --markdown
+
+# route a query to the right lane(s) + exact next commands
+python3 scripts/memory_search_map.py query  --home ~/.hermes --query "provider failover history" --json
+
+# validate store freshness/health
+python3 scripts/memory_search_map.py doctor --home ~/.hermes --json
+```
+
+Shipped behavior:
+- `build` / `query` / `doctor` commands.
+- stdlib only; no LLM, embedding load, or ChromaDB import. Semantic health uses a short daemon ping.
+- READ-ONLY everywhere; SQLite is opened read-only/immutable where applicable.
+- Search lanes: `memory-entry`, `session-semantic`, `temporal`, `notes-canonical`, `source-code`, `spine`.
+- Ranking blends intent heuristics, lexical topic overlap, and store availability.
+- Safety: emitted strings are secret-scrubbed; labels/keys/match terms only, never raw memory bodies.
+
+The rest of this note is the original design rationale, kept for provenance.
+
 ## User requirement
 When the agent lacks enough current context, going deeper should stay cheap. Before expensive semantic/vector/session reads, the agent should inspect a tiny dynamic map that tells it where knowledge lives, then route directly to the right search lane using relevance, recency/time, authority, and verification signals.
 
