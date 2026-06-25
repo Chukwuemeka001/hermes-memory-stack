@@ -15,9 +15,26 @@ This is the tool.
 | **Memory audit** | Finds duplicates, content dumps, stale entries, broken pointers |
 | **Pointer rewrite** | Condenses verbose entries into concise pointers |
 | **Temporal versioning** | Tracks every memory change with rollback and diff |
-| **Memory projection** | Reduces token usage by 58% — injects only the most relevant entries |
+| **Memory projection** | Injects a compact working set instead of brute-force full memory |
+| **Honesty harness** | Measures required-fact recall, pin survival, token savings, and optional answer-quality preservation |
 | **Health monitoring** | Capacity alerts, drift detection, cron automation |
 | **Semantic retrieval** | Find memories by concept, not just keywords |
+
+## Evaluation snapshot
+
+See **[MEMORY_OS_EVAL.md](MEMORY_OS_EVAL.md)** for the current public measurement snapshot.
+
+Current headline numbers:
+
+| Metric | Result |
+|---|---:|
+| Full test suite | **377/377 passing** |
+| Tier-1 deterministic harness | **WARN** — 4 PASS / 2 WARN / 0 FAIL |
+| Query-aware required-fact recall | **83.3%** |
+| Query-aware harness token savings | **35.3%** |
+| Real Tier-2 Claude answer-quality smoke | **PASS** on `safety-leaked-api-key` |
+
+The evaluation is intentionally honest: two Tier-1 tasks still warn because projection drops required context. That is the point — token savings is not treated as quality unless required context and answer quality survive.
 
 ## Quick start
 
@@ -183,23 +200,24 @@ Scoring model:
 cd ~/.hermes/packages/hermes-memory-stack
 
 # Full test suite
-python3 -m unittest tests.test_install tests.test_state_db_remediate tests.test_memory_audit \
-    tests.test_memory_rewrite tests.test_temporal_migrate_onboard tests.test_memory_health \
-    tests.test_memory_maintenance tests.test_e2e_pipeline tests.test_temporal_memory \
-    tests.test_memory_auto_extract tests.test_consistency tests.test_onboard tests.test_memory_project
+python3 -m unittest discover -s tests -v
 
-# Generate a synthetic messy profile to inspect
-python3 tests/synthetic_profile.py /tmp/messy-profile --level stress --seed 42
+# Projection honesty harness
+python3 scripts/memory_harness.py --json
+
+# Optional model-backed Tier-2 smoke (uses Claude Code CLI subscription auth)
+python3 scripts/memory_harness.py --tier2 --tier2-grader claude-cli \
+  --tier2-task safety-leaked-api-key --tier2-timeout 180 --json
 ```
 
-**265 tests passing.** All synthetic, never touches live data.
+**377 tests passing.** Unit/E2E tests use synthetic data and never touch live memory by default.
 
 ## What's included
 
 | Category | Files |
 |---|---|
 | Scripts | 21 Python + 6 shell |
-| Tests | 12 test files (265 tests) |
+| Tests | 13 test files (377 tests) |
 | Skills | 9 operator docs |
 | Crons | 5 no-agent definitions |
 | Plans | 5 design documents |
@@ -210,7 +228,8 @@ python3 tests/synthetic_profile.py /tmp/messy-profile --level stress --seed 42
 - **Auto-extraction is dry-run by default** — `--write` is not enabled until precision is proven on real data
 - **Semantic daemon needs Python 3.14** with chromadb + sentence-transformers
 - **Gateway must be stopped** before state.db cleanup
-- **Projection is static (Phase 1)** — context-aware projection (Phase 2) is in design
+- **Projection is not wired into live Hermes prompt assembly yet** — the engine and honesty harness are built; live use should start in shadow mode
+- **Tier-2 answer-quality grading is opt-in** — real runs call Claude Code CLI and spend subscription tokens
 
 ## License
 

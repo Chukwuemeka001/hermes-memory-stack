@@ -1,0 +1,623 @@
+{
+  "tool": "memory_harness",
+  "tool_version": "1.0.0",
+  "tier": 1,
+  "today": "2026-06-24",
+  "tasks_path": "/Users/emeka/.hermes/packages/hermes-memory-stack/scripts/memory_harness_tasks.json",
+  "modes": [
+    "static",
+    "lexical"
+  ],
+  "primary_mode": "lexical",
+  "recall_warn_floor": 0.5,
+  "tasks_total": 6,
+  "status_counts": {
+    "PASS": 4,
+    "WARN": 2,
+    "FAIL": 0
+  },
+  "overall_status": "WARN",
+  "per_mode": {
+    "static": {
+      "is_primary_gate": false,
+      "original_tokens": 1235,
+      "projected_tokens": 810,
+      "savings_pct": 34.4,
+      "mean_required_recall_pct": 41.7,
+      "status_counts": {
+        "PASS": 1,
+        "WARN": 3,
+        "FAIL": 2
+      }
+    },
+    "lexical": {
+      "is_primary_gate": true,
+      "original_tokens": 1235,
+      "projected_tokens": 799,
+      "savings_pct": 35.3,
+      "mean_required_recall_pct": 83.3,
+      "status_counts": {
+        "PASS": 4,
+        "WARN": 2,
+        "FAIL": 0
+      }
+    }
+  },
+  "tasks": [
+    {
+      "id": "hermes-telegram-poller",
+      "category": "hermes-troubleshooting",
+      "query": "the telegram poller keeps dropping events again, how do I recover the watchdog",
+      "budget_tokens": 150,
+      "original_tokens": 254,
+      "optional_capacity": 124,
+      "min_budget_for_required": 103,
+      "budget_can_hold_required": true,
+      "primary_mode": "lexical",
+      "fixture_valid": true,
+      "control_required_recall": 1.0,
+      "missing_in_control": [],
+      "pins": [
+        {
+          "label": "notes-header",
+          "store": "memory",
+          "expected": "operational",
+          "actual": "operational",
+          "survived_budget_zero": true
+        }
+      ],
+      "dropped_pins": [],
+      "misclassified_pins": [],
+      "modes": [
+        {
+          "mode": "static",
+          "budget_tokens": 150,
+          "original_tokens": 254,
+          "projected_tokens": 146,
+          "savings_pct": 42.5,
+          "required_total": 2,
+          "required_recall": 0.0,
+          "required_recall_pct": 0.0,
+          "missing_required": [
+            "telegram-poller-rootcause",
+            "watchdog-recovery"
+          ],
+          "missing_droppable": [
+            "telegram-poller-rootcause",
+            "watchdog-recovery"
+          ],
+          "missing_unfittable": [],
+          "entries_selected": 6,
+          "entries_total": 9,
+          "selected_precision": 0.0,
+          "gold_uncontested": false,
+          "relevance_source": "disabled:no-query",
+          "status": "FAIL",
+          "is_primary": false,
+          "advisories": [],
+          "baseline_note": "fallback baseline: 'static' recall 0.0% < primary 'lexical' 100.0% (query-aware projection recovers this; static fallback does not)"
+        },
+        {
+          "mode": "lexical",
+          "budget_tokens": 150,
+          "original_tokens": 254,
+          "projected_tokens": 144,
+          "savings_pct": 43.3,
+          "required_total": 2,
+          "required_recall": 1.0,
+          "required_recall_pct": 100.0,
+          "missing_required": [],
+          "missing_droppable": [],
+          "missing_unfittable": [],
+          "entries_selected": 5,
+          "entries_total": 9,
+          "selected_precision": 0.5,
+          "gold_uncontested": false,
+          "relevance_source": "memories-index:2 hits",
+          "status": "PASS",
+          "is_primary": true,
+          "advisories": []
+        }
+      ],
+      "status": "PASS",
+      "fail_reasons": [],
+      "warn_reasons": [],
+      "per_mode_status": {
+        "static": "FAIL",
+        "lexical": "PASS"
+      }
+    },
+    {
+      "id": "nclex-pharm-rationale",
+      "category": "nclex",
+      "query": "build the beta blocker pharmacology rationale flashcard and log the missed items",
+      "budget_tokens": 140,
+      "original_tokens": 215,
+      "optional_capacity": 114,
+      "min_budget_for_required": 99,
+      "budget_can_hold_required": true,
+      "primary_mode": "lexical",
+      "fixture_valid": true,
+      "control_required_recall": 1.0,
+      "missing_in_control": [],
+      "pins": [
+        {
+          "label": "notes-header",
+          "store": "memory",
+          "expected": "operational",
+          "actual": "operational",
+          "survived_budget_zero": true
+        }
+      ],
+      "dropped_pins": [],
+      "misclassified_pins": [],
+      "modes": [
+        {
+          "mode": "static",
+          "budget_tokens": 140,
+          "original_tokens": 215,
+          "projected_tokens": 131,
+          "savings_pct": 39.1,
+          "required_total": 2,
+          "required_recall": 0.5,
+          "required_recall_pct": 50.0,
+          "missing_required": [
+            "nclex-error-journal"
+          ],
+          "missing_droppable": [
+            "nclex-error-journal"
+          ],
+          "missing_unfittable": [],
+          "entries_selected": 5,
+          "entries_total": 8,
+          "selected_precision": 0.25,
+          "gold_uncontested": false,
+          "relevance_source": "disabled:no-query",
+          "status": "WARN",
+          "is_primary": false,
+          "advisories": []
+        },
+        {
+          "mode": "lexical",
+          "budget_tokens": 140,
+          "original_tokens": 215,
+          "projected_tokens": 131,
+          "savings_pct": 39.1,
+          "required_total": 2,
+          "required_recall": 0.5,
+          "required_recall_pct": 50.0,
+          "missing_required": [
+            "nclex-error-journal"
+          ],
+          "missing_droppable": [
+            "nclex-error-journal"
+          ],
+          "missing_unfittable": [],
+          "entries_selected": 5,
+          "entries_total": 8,
+          "selected_precision": 0.25,
+          "gold_uncontested": false,
+          "relevance_source": "memories-index:2 hits",
+          "status": "WARN",
+          "is_primary": true,
+          "advisories": []
+        }
+      ],
+      "status": "WARN",
+      "fail_reasons": [],
+      "warn_reasons": [
+        "[lexical] required recall 50.0%; dropped (could fit): ['nclex-error-journal']"
+      ],
+      "per_mode_status": {
+        "static": "WARN",
+        "lexical": "WARN"
+      }
+    },
+    {
+      "id": "trading-origin-candidate-v3",
+      "category": "trading-project-recall",
+      "query": "what is the plan for origin candidate v3 POI work in the trading brain",
+      "budget_tokens": 150,
+      "original_tokens": 227,
+      "optional_capacity": 99,
+      "min_budget_for_required": 117,
+      "budget_can_hold_required": true,
+      "primary_mode": "lexical",
+      "fixture_valid": true,
+      "control_required_recall": 1.0,
+      "missing_in_control": [],
+      "pins": [
+        {
+          "label": "exec-safety-pin",
+          "store": "memory",
+          "expected": "safety",
+          "actual": "safety",
+          "survived_budget_zero": true
+        },
+        {
+          "label": "no-scale-pin",
+          "store": "user",
+          "expected": "safety",
+          "actual": "safety",
+          "survived_budget_zero": true
+        }
+      ],
+      "dropped_pins": [],
+      "misclassified_pins": [],
+      "modes": [
+        {
+          "mode": "static",
+          "budget_tokens": 150,
+          "original_tokens": 227,
+          "projected_tokens": 145,
+          "savings_pct": 36.1,
+          "required_total": 2,
+          "required_recall": 0.5,
+          "required_recall_pct": 50.0,
+          "missing_required": [
+            "origin-v3-proofpoint"
+          ],
+          "missing_droppable": [
+            "origin-v3-proofpoint"
+          ],
+          "missing_unfittable": [],
+          "entries_selected": 6,
+          "entries_total": 9,
+          "selected_precision": 0.25,
+          "gold_uncontested": false,
+          "relevance_source": "disabled:no-query",
+          "status": "WARN",
+          "is_primary": false,
+          "advisories": []
+        },
+        {
+          "mode": "lexical",
+          "budget_tokens": 150,
+          "original_tokens": 227,
+          "projected_tokens": 145,
+          "savings_pct": 36.1,
+          "required_total": 2,
+          "required_recall": 0.5,
+          "required_recall_pct": 50.0,
+          "missing_required": [
+            "trading-poi-spec"
+          ],
+          "missing_droppable": [
+            "trading-poi-spec"
+          ],
+          "missing_unfittable": [],
+          "entries_selected": 6,
+          "entries_total": 9,
+          "selected_precision": 0.25,
+          "gold_uncontested": false,
+          "relevance_source": "memories-index:4 hits",
+          "status": "WARN",
+          "is_primary": true,
+          "advisories": []
+        }
+      ],
+      "status": "WARN",
+      "fail_reasons": [],
+      "warn_reasons": [
+        "[lexical] required recall 50.0%; dropped (could fit): ['trading-poi-spec']"
+      ],
+      "per_mode_status": {
+        "static": "WARN",
+        "lexical": "WARN"
+      }
+    },
+    {
+      "id": "design-landing-redesign",
+      "category": "design-recall",
+      "query": "what spacing scale and brand palette should the landing page redesign use",
+      "budget_tokens": 140,
+      "original_tokens": 176,
+      "optional_capacity": 114,
+      "min_budget_for_required": 76,
+      "budget_can_hold_required": true,
+      "primary_mode": "lexical",
+      "fixture_valid": true,
+      "control_required_recall": 1.0,
+      "missing_in_control": [],
+      "pins": [
+        {
+          "label": "notes-header",
+          "store": "memory",
+          "expected": "operational",
+          "actual": "operational",
+          "survived_budget_zero": true
+        }
+      ],
+      "dropped_pins": [],
+      "misclassified_pins": [],
+      "modes": [
+        {
+          "mode": "static",
+          "budget_tokens": 140,
+          "original_tokens": 176,
+          "projected_tokens": 136,
+          "savings_pct": 22.7,
+          "required_total": 2,
+          "required_recall": 1.0,
+          "required_recall_pct": 100.0,
+          "missing_required": [],
+          "missing_droppable": [],
+          "missing_unfittable": [],
+          "entries_selected": 6,
+          "entries_total": 8,
+          "selected_precision": 0.4,
+          "gold_uncontested": false,
+          "relevance_source": "disabled:no-query",
+          "status": "PASS",
+          "is_primary": false,
+          "advisories": []
+        },
+        {
+          "mode": "lexical",
+          "budget_tokens": 140,
+          "original_tokens": 176,
+          "projected_tokens": 136,
+          "savings_pct": 22.7,
+          "required_total": 2,
+          "required_recall": 1.0,
+          "required_recall_pct": 100.0,
+          "missing_required": [],
+          "missing_droppable": [],
+          "missing_unfittable": [],
+          "entries_selected": 6,
+          "entries_total": 8,
+          "selected_precision": 0.4,
+          "gold_uncontested": false,
+          "relevance_source": "memories-index:2 hits",
+          "status": "PASS",
+          "is_primary": true,
+          "advisories": []
+        }
+      ],
+      "status": "PASS",
+      "fail_reasons": [],
+      "warn_reasons": [],
+      "per_mode_status": {
+        "static": "PASS",
+        "lexical": "PASS"
+      }
+    },
+    {
+      "id": "user-preference-recall",
+      "category": "user-preference-recall",
+      "query": "should I write a long research report or give a quick direct answer and act",
+      "budget_tokens": 130,
+      "original_tokens": 182,
+      "optional_capacity": 104,
+      "min_budget_for_required": 85,
+      "budget_can_hold_required": true,
+      "primary_mode": "lexical",
+      "fixture_valid": true,
+      "control_required_recall": 1.0,
+      "missing_in_control": [],
+      "pins": [
+        {
+          "label": "notes-header",
+          "store": "memory",
+          "expected": "operational",
+          "actual": "operational",
+          "survived_budget_zero": true
+        }
+      ],
+      "dropped_pins": [],
+      "misclassified_pins": [],
+      "modes": [
+        {
+          "mode": "static",
+          "budget_tokens": 130,
+          "original_tokens": 182,
+          "projected_tokens": 126,
+          "savings_pct": 30.8,
+          "required_total": 2,
+          "required_recall": 0.5,
+          "required_recall_pct": 50.0,
+          "missing_required": [
+            "pref-brief-direct"
+          ],
+          "missing_droppable": [
+            "pref-brief-direct"
+          ],
+          "missing_unfittable": [],
+          "entries_selected": 6,
+          "entries_total": 8,
+          "selected_precision": 0.2,
+          "gold_uncontested": false,
+          "relevance_source": "disabled:no-query",
+          "status": "WARN",
+          "is_primary": false,
+          "advisories": [],
+          "baseline_note": "fallback baseline: 'static' recall 50.0% < primary 'lexical' 100.0% (query-aware projection recovers this; static fallback does not)"
+        },
+        {
+          "mode": "lexical",
+          "budget_tokens": 130,
+          "original_tokens": 182,
+          "projected_tokens": 117,
+          "savings_pct": 35.7,
+          "required_total": 2,
+          "required_recall": 1.0,
+          "required_recall_pct": 100.0,
+          "missing_required": [],
+          "missing_droppable": [],
+          "missing_unfittable": [],
+          "entries_selected": 5,
+          "entries_total": 8,
+          "selected_precision": 0.5,
+          "gold_uncontested": false,
+          "relevance_source": "memories-index:2 hits",
+          "status": "PASS",
+          "is_primary": true,
+          "advisories": []
+        }
+      ],
+      "status": "PASS",
+      "fail_reasons": [],
+      "warn_reasons": [],
+      "per_mode_status": {
+        "static": "WARN",
+        "lexical": "PASS"
+      }
+    },
+    {
+      "id": "safety-leaked-api-key",
+      "category": "safety-apikey-guardrails",
+      "query": "an api key may have leaked in a log, what is the incident procedure to rotate and audit",
+      "budget_tokens": 130,
+      "original_tokens": 181,
+      "optional_capacity": 56,
+      "min_budget_for_required": 112,
+      "budget_can_hold_required": true,
+      "primary_mode": "lexical",
+      "fixture_valid": true,
+      "control_required_recall": 1.0,
+      "missing_in_control": [],
+      "pins": [
+        {
+          "label": "apikey-policy-pin",
+          "store": "memory",
+          "expected": "safety",
+          "actual": "safety",
+          "survived_budget_zero": true
+        },
+        {
+          "label": "never-share-secrets-pin",
+          "store": "memory",
+          "expected": "safety",
+          "actual": "safety",
+          "survived_budget_zero": true
+        },
+        {
+          "label": "no-live-trade-pin",
+          "store": "user",
+          "expected": "safety",
+          "actual": "safety",
+          "survived_budget_zero": true
+        }
+      ],
+      "dropped_pins": [],
+      "misclassified_pins": [],
+      "modes": [
+        {
+          "mode": "static",
+          "budget_tokens": 130,
+          "original_tokens": 181,
+          "projected_tokens": 126,
+          "savings_pct": 30.4,
+          "required_total": 1,
+          "required_recall": 0.0,
+          "required_recall_pct": 0.0,
+          "missing_required": [
+            "leaked-key-runbook"
+          ],
+          "missing_droppable": [
+            "leaked-key-runbook"
+          ],
+          "missing_unfittable": [],
+          "entries_selected": 6,
+          "entries_total": 8,
+          "selected_precision": 0.0,
+          "gold_uncontested": false,
+          "relevance_source": "disabled:no-query",
+          "status": "FAIL",
+          "is_primary": false,
+          "advisories": [],
+          "baseline_note": "fallback baseline: 'static' recall 0.0% < primary 'lexical' 100.0% (query-aware projection recovers this; static fallback does not)"
+        },
+        {
+          "mode": "lexical",
+          "budget_tokens": 130,
+          "original_tokens": 181,
+          "projected_tokens": 126,
+          "savings_pct": 30.4,
+          "required_total": 1,
+          "required_recall": 1.0,
+          "required_recall_pct": 100.0,
+          "missing_required": [],
+          "missing_droppable": [],
+          "missing_unfittable": [],
+          "entries_selected": 5,
+          "entries_total": 8,
+          "selected_precision": 0.5,
+          "gold_uncontested": false,
+          "relevance_source": "memories-index:3 hits",
+          "status": "PASS",
+          "is_primary": true,
+          "advisories": []
+        }
+      ],
+      "status": "PASS",
+      "fail_reasons": [],
+      "warn_reasons": [],
+      "per_mode_status": {
+        "static": "FAIL",
+        "lexical": "PASS"
+      }
+    }
+  ],
+  "limitations": [
+    "Tier-1 'lexical' relevance is token overlap, NOT the shipped embedding model; it is a weak floor-ish proxy, not production retrieval quality.",
+    "Recall against a gold set is a PROXY for answer quality (necessary, not sufficient). Only a Tier-2 model grader scores the actual answer.",
+    "Token savings is reported but NEVER decides PASS/WARN/FAIL (H3).",
+    "Fixtures are synthetic and few: representative + adversarial, not exhaustive."
+  ],
+  "tier2": {
+    "ran": true,
+    "grader": "claude-cli",
+    "model": "claude-opus-4-8",
+    "gating_mode": "lexical",
+    "recall_warn_floor": 0.5,
+    "overall_status": "PASS",
+    "status_counts": {
+      "PASS": 1,
+      "WARN": 0,
+      "FAIL": 0,
+      "BLOCKED": 0,
+      "ERROR": 0
+    },
+    "graded_count": 1,
+    "blocked_count": 0,
+    "tasks_total": 1,
+    "tasks": [
+      {
+        "task_id": "safety-leaked-api-key",
+        "category": "safety-apikey-guardrails",
+        "gating_mode": "lexical",
+        "grader": "claude-cli",
+        "model": "claude-opus-4-8",
+        "required_total": 1,
+        "pins_total": 3,
+        "preserved_required": [
+          "leaked-key-runbook"
+        ],
+        "missing_required": [],
+        "honored_constraints": [
+          "apikey-policy-pin",
+          "never-share-secrets-pin",
+          "no-live-trade-pin"
+        ],
+        "unconfirmed_constraints": [],
+        "violated_constraints": [],
+        "equivalence": "equivalent",
+        "rationale": "PROJECTED reflects the full rotate-audit-reissue runbook and honours the gateway-only, never-share-secrets, and no-live-trade pins exactly as FULL does.",
+        "full_answer_preview": "The incident procedure for a leaked key, per runbook: 1. **Rotate first** — generate a new key via the ops console and invalidate the leaked one. 2. **Audit next** — review the access logs for any misuse while the old key was exposed. 3. **Re-issue** — provision the new key to th…",
+        "projected_answer_preview": "Per the incident runbook for a leaked key: 1. **Rotate first** — generate a new key via the ops console and revoke the leaked one. 2. **Audit next** — review the access logs for any misuse while the old key was exposed. 3. **Re-issue** — provision the new key to the gateway servi…",
+        "error": null,
+        "graded": true,
+        "status": "PASS",
+        "blocks_identical": false
+      }
+    ],
+    "limitations": [
+      "Tier 2 grades a MODEL's answers: it is non-deterministic and costs tokens; treat a single run as a sample, not a fixed measurement. Re-run or grade more tasks for confidence.",
+      "The 'claude-cli' grader uses the direct Claude Code CLI (subscription auth); it makes ~3 model calls per task (answer-full, answer-projected, judge).",
+      "A BLOCKED result means the grader was unreachable — NO quality evidence was obtained. It is never a pass; raise budget/availability and re-run.",
+      "Preservation is judged conservatively (unconfirmed required facts count as missing), so Tier 2 errs toward flagging loss rather than hiding it.",
+      "Token savings is still reported by Tier 1 only and NEVER decides a Tier-2 status."
+    ]
+  }
+}
