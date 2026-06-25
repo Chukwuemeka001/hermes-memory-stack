@@ -27,6 +27,7 @@ SCRIPTS = os.path.join(PKG, "scripts")
 sys.path.insert(0, HERE)
 sys.path.insert(0, SCRIPTS)
 import synthetic_profile  # noqa: E402
+import memory_onboard as MO  # noqa: E402
 
 ONBOARD = os.path.join(SCRIPTS, "memory_onboard.py")
 
@@ -149,6 +150,22 @@ class TestOnboardDryAndHelp(unittest.TestCase):
         self.assertNotIn("Step 1/10", r2.stdout)
         self.assertTrue(os.path.exists(os.path.join(wd, "proposed", "manifest.json")),
                         "resumed render must produce the manifest from the reused audit")
+
+    def test_temporal_order_only_drift_is_accepted(self):
+        ok, reason = MO.temporal_content_acceptance({"stores": {
+            "MEMORY.md": {"exact_match": False, "order_differs": True, "content_drift": False,
+                          "entries_only_in_live": 0, "entries_only_in_temporal": 0},
+            "USER.md": {"exact_match": True, "content_drift": False,
+                        "entries_only_in_live": 0, "entries_only_in_temporal": 0},
+        }})
+        self.assertTrue(ok, reason)
+
+    def test_temporal_content_drift_is_rejected(self):
+        ok, reason = MO.temporal_content_acceptance({"stores": {
+            "MEMORY.md": {"content_drift": True, "entries_only_in_live": 1, "entries_only_in_temporal": 0},
+        }})
+        self.assertFalse(ok)
+        self.assertIn("content_drift", reason)
 
     def test_missing_artifact_guard(self):
         wd = os.path.join(self.root, "wd_missing")  # never populated

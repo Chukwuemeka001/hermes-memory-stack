@@ -269,6 +269,22 @@ def check_semantic(home: str) -> dict:
             "note": "daemon socket present" if running else "daemon socket absent (query starts it on demand)"}
 
 
+def check_hot_audit(home: str, memory_path: str, user_path: str) -> dict:
+    """Best-effort audit signals that capacity alone cannot show (broken pointers, dups)."""
+    try:
+        import memory_audit as MA  # noqa: WPS433
+        rep = MA.run_audit(memory_path, user_path, home, user_home=os.path.expanduser("~"))
+        s = rep.get("summary", {})
+        broken = s.get("broken_pointers") or []
+        dups = s.get("duplicate_pairs", 0)
+        contra = s.get("contradiction_pairs", 0)
+        status = "warning" if broken or contra else "ok"
+        return {"status": status, "broken_pointers": broken, "duplicate_pairs": dups,
+                "contradiction_pairs": contra, "actionable": s.get("actionable_entries", 0)}
+    except Exception as e:
+        return {"status": "error", "note": f"hot-memory audit unavailable: {e}"}
+
+
 def check_auto_extract(home: str) -> dict:
     """Best-effort: latest dry-run candidates count from the _auto_extract dir."""
     d = os.path.join(home, "memories", "_auto_extract")
@@ -332,6 +348,7 @@ def run_health(home: str, *, memory_path: str | None = None, user_path: str | No
     checks = {
         "capacity": _safe("capacity", check_capacity, home, memory_path, user_path),
         "temporal": _safe("temporal", check_temporal, home, memory_path, user_path),
+        "hot_audit": _safe("hot_audit", check_hot_audit, home, memory_path, user_path),
         "crons": _safe("crons", check_crons, home),
         "state_db": _safe("state_db", check_state_db, home),
         "semantic": _safe("semantic", check_semantic, home),
@@ -341,7 +358,7 @@ def run_health(home: str, *, memory_path: str | None = None, user_path: str | No
     # are informational only (they never drive the score to red). "unknown" maps
     # to green here so a not-yet-installed component doesn't raise a false alarm.
     score = "green"
-    for key in ("capacity", "temporal", "crons", "state_db"):
+    for key in ("capacity", "temporal", "hot_audit", "crons", "state_db"):
         color = _FLAG_TO_COLOR.get(checks[key]["status"], "green")
         if color == "unknown":
             color = "green"
@@ -368,6 +385,11 @@ def _alerts(checks: dict) -> list[str]:
     t = checks["temporal"]
     if t.get("content_drift"):
         a.append("temporal layer DRIFT: live hot memory differs from the temporal DB — run temporal sync")
+    ha = checks.get("hot_audit", {})
+    if ha.get("broken_pointers"):
+        a.append(f"broken hot-memory pointers: {len(ha['broken_pointers'])} ({', '.join(ha['broken_pointers'][:5])})")
+    if ha.get("contradiction_pairs"):
+        a.append(f"possible hot-memory contradictions: {ha['contradiction_pairs']}")
     for name in checks["crons"].get("errors", []):
         a.append(f"cron in error state: {name}")
     for p in checks["state_db"].get("oversized", []):
@@ -405,6 +427,14 @@ def render_markdown(rep: dict) -> str:
     else:
         L.append(f"- facts={t.get('facts')} versions={t.get('versions')} current={t.get('current_facts')} "
                  f"all_match={t.get('all_match')} drift={t.get('content_drift')} [{t['status']}]")
+    ha = c.get("hot_audit", {})
+    L += ["", "## Hot-memory audit"]
+    if ha.get("status") == "error":
+        L.append(f"- {ha.get('note')}")
+    else:
+        L.append(f"- broken_pointers={len(ha.get('broken_pointers') or [])} duplicates={ha.get('duplicate_pairs')} contradictions={ha.get('contradiction_pairs')} [{ha.get('status')}]")
+        if ha.get("broken_pointers"):
+            L.append("- broken refs: " + ", ".join(ha.get("broken_pointers")[:10]))
     L += ["", "## Memory crons"]
     for j in c["crons"].get("jobs", []):
         flag = "" if j["flag"] == "ok" else "  ⚠️"

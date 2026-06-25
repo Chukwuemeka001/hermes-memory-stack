@@ -611,6 +611,30 @@ def _unique_path(path: str) -> str:
     return f"{path}.{i}"
 
 
+def _write_restore_doc(archive_dir: str, stamp: str, archives: list[dict]) -> str:
+    """Write operator restore instructions for a hot-memory rewrite archive."""
+    path = _unique_path(os.path.join(archive_dir, f"RESTORE-rewrite-{stamp}.md"))
+    lines = [
+        "# Restore hot-memory rewrite",
+        "",
+        f"Generated: {stamp}",
+        "",
+        "These commands restore the archived hot-memory files captured before `memory_rewrite.py apply`.",
+        "Run from any shell on the same machine after reviewing paths.",
+        "",
+        "```bash",
+    ]
+    for a in archives:
+        lines.append(f"cp {a['archive']} {a['live']}")
+    lines += ["```", "", "## Archived files", ""]
+    for a in archives:
+        lines.append(f"- `{a['archive']}` → `{a['live']}` · sha256 `{a['sha256']}`")
+    lines.append("")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    return path
+
+
 def apply(plan: dict, *, confirm: bool, archive_dir: str, now: _dt.datetime | None = None) -> dict:
     result = {"applied": False, "steps": [], "errors": []}
     if not confirm:
@@ -647,17 +671,22 @@ def apply(plan: dict, *, confirm: bool, archive_dir: str, now: _dt.datetime | No
 
         os.makedirs(arch_dir, exist_ok=True)
         # 1) Archive every live original FIRST (timestamped, no-clobber).
+        archives = []
         for store, f in plan["_out_files_text"].items():
             src = f["path"]
             dst = _unique_path(os.path.join(arch_dir, f"{os.path.basename(src)}.pre-rewrite-{stamp}"))
             shutil.copy2(src, dst)
-            result["steps"].append({"archived_original": dst, "sha256": MA.sha256_text(MA.read_text(dst))})
-        # 2) Write a manifest of the change next to the archives.
+            arch_sha = MA.sha256_text(MA.read_text(dst))
+            archives.append({"store": store, "live": src, "archive": dst, "sha256": arch_sha})
+            result["steps"].append({"archived_original": dst, "sha256": arch_sha})
+        # 2) Write a manifest + RESTORE doc of the change next to the archives.
         try:
             with open(os.path.join(arch_dir, f"rewrite-manifest-{stamp}.json"), "w", encoding="utf-8") as fh:
                 json.dump(build_manifest(plan, []), fh, indent=2)
         except Exception:
             pass
+        restore_doc = _write_restore_doc(arch_dir, stamp, archives)
+        result["steps"].append({"restore_doc": restore_doc})
         # 3) Atomically write proposed content to the live files.
         for store, f in plan["_out_files_text"].items():
             live = f["path"]
@@ -665,7 +694,14 @@ def apply(plan: dict, *, confirm: bool, archive_dir: str, now: _dt.datetime | No
             with open(tmp, "w", encoding="utf-8") as fh:
                 fh.write(f["proposed_text"])
             os.replace(tmp, live)
-            result["steps"].append({"wrote_live": live})
+            # Post-write verification: re-read the live file under the same lock and
+            # prove it equals the proposed bytes before reporting success.
+            proposed_sha = MA.sha256_text(f["proposed_text"])
+            live_sha_after = MA.sha256_text(MA.read_text(live))
+            if live_sha_after != proposed_sha:
+                result["errors"].append(f"post-write verification failed for {os.path.basename(live)}")
+                return result
+            result["steps"].append({"wrote_live": live, "sha256": live_sha_after, "verified": True})
     result["applied"] = True
     # 4) INTEG-3: record this rewrite's provenance into an EXISTING temporal layer.
     #    Gated by the same `confirm` that authorised the live write (we already

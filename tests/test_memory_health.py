@@ -103,6 +103,19 @@ class TestCapacity(Base):
         self.assertEqual(rep["checks"]["capacity"]["status"], "ok")
         self.assertEqual(rep["overall"], "green")
 
+    def test_broken_pointers_surface_as_actionable_alert(self):
+        self.write(["Header notes.", "Dead pointer: Full context: /definitely/missing/path.md."], ["Pref."])
+        rep = H.run_health(self.tmp)
+        ha = rep["checks"]["hot_audit"]
+        self.assertEqual(ha["status"], "warning")
+        self.assertIn("memory#1", ha["broken_pointers"])
+        self.assertTrue(any("broken hot-memory pointers" in a for a in rep["alerts"]))
+
+    def test_capacity_counts_code_points_not_bytes(self):
+        self.write(["Header notes.", "Emoji fact 😀 with section § marker as content-safe text."], ["Pref."])
+        cap = H.run_health(self.tmp)["checks"]["capacity"]["files"]["memory"]
+        self.assertEqual(cap["chars"], len(open(self.mem, encoding="utf-8").read()))
+
 
 class TestMissingFiles(Base):
     def test_missing_files_graceful(self):

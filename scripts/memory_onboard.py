@@ -423,6 +423,9 @@ def step9_temporal_verify(ctx: Ctx) -> StepResult:
     summ = f"reconstruct == live: {am} (facts={facts}, versions={j.get('versions')})"
     if am:
         return StepResult(True, summ)
+    ok_fact, reason = temporal_content_acceptance(j)
+    if ok_fact:
+        return StepResult(True, f"{summ} — {reason}")
     # not all_match — in dry-run the Area-4 populating steps (7-8) were skipped, so an
     # empty / drifted temporal layer is EXPECTED here, not a failure.
     if ctx.dry_run:
@@ -430,7 +433,25 @@ def step9_temporal_verify(ctx: Ctx) -> StepResult:
             return StepResult(True, "no temporal layer yet — Area 4 (steps 7-8) is apply-only; "
                               "would verify after --apply", skipped=True)
         return StepResult(True, f"[dry-run] {summ} — apply would reconcile drift via sync")
-    return StepResult(False, "temporal does NOT reconstruct live exactly — investigate drift", summ)
+    return StepResult(False, f"temporal content drift — {reason}; investigate before continuing", summ)
+
+
+def temporal_content_acceptance(report: dict) -> tuple[bool, str]:
+    """True when temporal has no fact drift even if byte/order exactness differs.
+
+    `all_match` is too strict for live hot memory because the temporal replay order
+    can differ while preserving the same entry multiset. Acceptance is fact-level:
+    no content drift and no entries only in live/temporal for every store.
+    """
+    stores = report.get("stores") or {}
+    if not stores:
+        return False, "no store verification details"
+    for name, st in stores.items():
+        if st.get("content_drift"):
+            return False, f"{name} has content_drift=true"
+        if st.get("entries_only_in_live") or st.get("entries_only_in_temporal"):
+            return False, f"{name} has unmatched live/temporal entries"
+    return True, "content faithful (order/whitespace-only drift accepted)"
 
 
 # -- Area 5 ----------------------------------------------------------------- #

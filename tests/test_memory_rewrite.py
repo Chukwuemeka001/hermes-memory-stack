@@ -353,6 +353,9 @@ class TestSafetyGates(Base):
         archived = [os.path.join(arch, f) for f in os.listdir(arch) if "MEMORY.md.pre-rewrite" in f]
         self.assertTrue(archived)
         self.assertEqual(read(archived[0]), original)
+        restore = [f for f in os.listdir(arch) if f.startswith("RESTORE-rewrite-") and f.endswith(".md")]
+        self.assertTrue(restore, "apply must write operator RESTORE instructions")
+        self.assertIn("cp ", read(os.path.join(arch, restore[0])))
 
     def test_apply_waits_for_shared_file_lock(self):
         if MR.fcntl is None:
@@ -383,6 +386,8 @@ class TestSafetyGates(Base):
         self.assertFalse(t.is_alive(), "apply should proceed after the lock is released")
         self.assertTrue(done and done[0]["applied"])
         self.assertTrue(any("locks_acquired" in step for step in done[0]["steps"]))
+        self.assertTrue(any(step.get("verified") is True for step in done[0]["steps"] if "wrote_live" in step))
+        self.assertTrue(any("restore_doc" in step for step in done[0]["steps"]))
         self.assertNotIn("Status fixed on 2026-01-01", read(self.mem))
 
 

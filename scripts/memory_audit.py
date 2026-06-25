@@ -734,7 +734,7 @@ def audit_file(path: str, store: str, user_home: str, *, max_entry_chars: int,
                today: _dt.date, stale_days: int, owner_stop: frozenset) -> dict:
     raw_entries = parse_entries(path)
     char_limit = DEFAULT_MEMORY_CHAR_LIMIT if store == "memory" else DEFAULT_USER_CHAR_LIMIT
-    total_chars = os.path.getsize(path) if (path and os.path.exists(path)) else 0
+    total_chars = len(read_text(path)) if (path and os.path.exists(path)) else 0
     out_entries = []
     for e in raw_entries:
         text = e["text"]
