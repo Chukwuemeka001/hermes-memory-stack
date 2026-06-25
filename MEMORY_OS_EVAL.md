@@ -9,6 +9,7 @@ Raw artifacts included with this snapshot:
 ```text
 reports/tier1-2026-06-25.json
 reports/tier2-safety-smoke-2026-06-25.json
+reports/tier2-full-2026-06-25.json
 ```
 
 Hermes Memory Stack is a local-first Memory OS for long-running agents. This evaluation measures whether its projection layer can reduce injected memory while preserving the context needed for useful answers.
@@ -24,6 +25,7 @@ The short version:
 | Static fallback required-fact recall | **64.3%** |
 | Query-aware token savings on harness fixtures | **27.8%** |
 | Real Tier-2 Claude answer-quality smoke | **PASS** on `safety-leaked-api-key` |
+| Full Tier-2 Claude answer-quality run | **WARN** — 9 PASS / 5 WARN / 0 FAIL / 0 BLOCKED / 0 ERROR |
 
 This is deliberately not presented as “perfect.” Five fixture tasks still warn under Tier 1. That is useful: the harness is able to show where projection loses required context instead of pretending token savings means quality.
 
@@ -181,7 +183,48 @@ Current real smoke:
 |---|:--:|:--:|---|---|
 | `safety-leaked-api-key` | **PASS** | equivalent | — | — |
 
-This is intentionally only a one-task smoke for now. A full Tier-2 run costs more because it uses multiple Claude calls per task.
+The one-task smoke remains useful as the cheap sanity check before running the full grader.
+
+### Full Tier-2 answer-quality run
+
+After expanding the fixture set, the full Claude Code CLI grader was run across all 14 tasks:
+
+```bash
+python3 scripts/memory_harness.py \
+  --tier2 \
+  --tier2-grader claude-cli \
+  --tier2-timeout 180 \
+  --json > reports/tier2-full-2026-06-25.json
+```
+
+Current result:
+
+```text
+tier2 overall: WARN
+status_counts: {'PASS': 9, 'WARN': 5, 'FAIL': 0, 'BLOCKED': 0, 'ERROR': 0}
+tasks: 14
+```
+
+Full Tier-2 findings:
+
+| Task | Tier-2 status | Equivalence | Missing required | Violated constraints |
+|---|:--:|:--:|---|---|
+| `hermes-telegram-poller` | PASS | equivalent | — | — |
+| `nclex-pharm-rationale` | PASS | equivalent | — | — |
+| `trading-origin-candidate-v3` | WARN | degraded | `trading-poi-spec` | — |
+| `design-landing-redesign` | PASS | equivalent | — | — |
+| `user-preference-recall` | PASS | equivalent | — | — |
+| `safety-leaked-api-key` | PASS | equivalent | — | — |
+| `hermes-provider-failover-config` | WARN | degraded | `xiaomi-fallback-role` | — |
+| `nclex-clinical-tagging` | PASS | equivalent | — | — |
+| `trading-definitions-first` | WARN | degraded | `definition-dictionary-path` | — |
+| `design-phone-demo-verification` | WARN | degraded | `frontend-e2e-verification` | — |
+| `credential-screenshot-safety` | PASS | equivalent | — | — |
+| `stale-memory-conflict-resolution` | WARN | equivalent | `session-search-recall-rule` | — |
+| `external-install-test-bar` | PASS | equivalent | — | — |
+| `projection-shadow-mode-rollout` | PASS | equivalent | — | — |
+
+Notably, the full Tier-2 run had **zero FAIL / zero BLOCKED / zero ERROR**. The WARNs are real evidence of context-loss risk, not infrastructure failure.
 
 ---
 
@@ -228,7 +271,7 @@ This evaluation is the beginning of that proof.
 
 - The Tier-1 fixture set is still small and synthetic: 14 representative/adversarial tasks across Hermes, NCLEX, trading, design, safety, memory operations, exportability, and rollout.
 - The `lexical` mode is a deterministic proxy, not the production embedding model.
-- Tier-2 has only been run as a one-task real Claude smoke so far.
+- Tier-2 has now been run both as a one-task smoke and as a full 14-task Claude Code CLI pass.
 - Tier-2 uses a single judge model; future versions should add repeated runs or multi-judge evaluation.
 - This is not yet a LongMemEval/Mem0/Zep benchmark comparison.
 - Live Hermes prompt assembly is not yet using projection by default.
@@ -251,9 +294,9 @@ Add more tasks across real operator domains:
 
 Target: **25–50 tasks** before making stronger claims.
 
-### 2. Run full Tier-2 evaluation
+### 2. Repeat full Tier-2 evaluation after each fixture expansion
 
-Run the real model-backed grader across all tasks once the fixture set is stable:
+The first full 14-task Tier-2 run is now committed. Re-run it after every meaningful fixture expansion:
 
 ```bash
 python3 scripts/memory_harness.py --tier2 --tier2-grader claude-cli --json \

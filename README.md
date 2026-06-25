@@ -33,6 +33,7 @@ Current headline numbers:
 | Query-aware required-fact recall | **82.1%** |
 | Query-aware harness token savings | **27.8%** |
 | Real Tier-2 Claude answer-quality smoke | **PASS** on `safety-leaked-api-key` |
+| Full Tier-2 Claude answer-quality run | **WARN** — 9 PASS / 5 WARN / 0 FAIL |
 
 The evaluation is intentionally honest: five Tier-1 tasks still warn because projection drops required context. That is the point — token savings is not treated as quality unless required context and answer quality survive.
 
