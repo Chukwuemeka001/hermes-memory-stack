@@ -8,6 +8,7 @@ HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 export HERMES_HOME
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCRIPTS_DIR="$HERMES_HOME/scripts"
+SKILLS_DIR="$HERMES_HOME/skills/memory-stack"
 CRONS_DIR="$HERMES_HOME/crons"
 LOGS_DIR="$HERMES_HOME/logs"
 
@@ -23,7 +24,7 @@ err() { echo -e "${RED}[memory-stack]${NC} $*" >&2; }
 
 # ── Shared setup ────────────────────────────────────────────────
 ensure_dirs() {
-    mkdir -p "$SCRIPTS_DIR" "$CRONS_DIR" "$LOGS_DIR" "$HERMES_HOME/config"
+    mkdir -p "$SCRIPTS_DIR" "$SKILLS_DIR" "$CRONS_DIR" "$LOGS_DIR" "$HERMES_HOME/config"
 }
 
 # ── Tier 1: Semantic Retrieval ──────────────────────────────────
@@ -40,10 +41,15 @@ install_semantic() {
     # Copy scripts
     cp "$SCRIPT_DIR/scripts/semantic_index.py" "$SCRIPTS_DIR/"
     cp "$SCRIPT_DIR/scripts/semantic_query.py" "$SCRIPTS_DIR/"
+    cp "$SCRIPT_DIR/scripts/memory_entry_index.py" "$SCRIPTS_DIR/"
+    cp "$SCRIPT_DIR/scripts/memory_project.py" "$SCRIPTS_DIR/"
     cp "$SCRIPT_DIR/scripts/semantic_reindex.sh" "$SCRIPTS_DIR/"
     chmod +x "$SCRIPTS_DIR/semantic_index.py"
     chmod +x "$SCRIPTS_DIR/semantic_query.py"
+    chmod +x "$SCRIPTS_DIR/memory_entry_index.py"
+    chmod +x "$SCRIPTS_DIR/memory_project.py"
     chmod +x "$SCRIPTS_DIR/semantic_reindex.sh"
+    cp "$SCRIPT_DIR/skills/"*.md "$SKILLS_DIR/" 2>/dev/null || true
 
     # Create chroma directory
     mkdir -p "$HERMES_HOME/chroma/sessions"
@@ -51,7 +57,11 @@ install_semantic() {
     # Run initial index (HERMES_HOME is exported at top of installer)
     log "Running initial session index..."
     python3 "$SCRIPTS_DIR/semantic_index.py" || \
-        warn "Initial index failed — may need chromadb deps. Run manually after install."
+        warn "Initial session index failed — may need chromadb deps. Run manually after install."
+
+    log "Running initial memory-entry index..."
+    python3 "$SCRIPTS_DIR/memory_entry_index.py" index --home "$HERMES_HOME" || \
+        warn "Initial memory-entry index failed — run manually after install."
 
     # Start daemon (nohup so it survives shell exit)
     log "Starting semantic daemon..."
@@ -123,6 +133,7 @@ install_remediation() {
     cp "$SCRIPT_DIR/scripts/memory_audit.py" "$SCRIPTS_DIR/"
     cp "$SCRIPT_DIR/scripts/memory_rewrite.py" "$SCRIPTS_DIR/"
     cp "$SCRIPT_DIR/scripts/memory_health.py" "$SCRIPTS_DIR/"
+    cp "$SCRIPT_DIR/scripts/memory_project.py" "$SCRIPTS_DIR/"  # projection footer / Phase 1 engine
     cp "$SCRIPT_DIR/scripts/memory_health_cron.sh" "$SCRIPTS_DIR/"
     cp "$SCRIPT_DIR/scripts/memory_maintenance.py" "$SCRIPTS_DIR/"
     cp "$SCRIPT_DIR/scripts/memory_maintenance_cron.sh" "$SCRIPTS_DIR/"
@@ -131,10 +142,12 @@ install_remediation() {
     chmod +x "$SCRIPTS_DIR/memory_audit.py"
     chmod +x "$SCRIPTS_DIR/memory_rewrite.py"
     chmod +x "$SCRIPTS_DIR/memory_health.py"
+    chmod +x "$SCRIPTS_DIR/memory_project.py"
     chmod +x "$SCRIPTS_DIR/memory_health_cron.sh"
     chmod +x "$SCRIPTS_DIR/memory_maintenance.py"
     chmod +x "$SCRIPTS_DIR/memory_maintenance_cron.sh"
     chmod +x "$SCRIPTS_DIR/memory_onboard.py"
+    cp "$SCRIPT_DIR/skills/"*.md "$SKILLS_DIR/" 2>/dev/null || true
 
     log "✓ Remediation installed (Areas 1-5)"
     log "  Onboard: python3 $SCRIPTS_DIR/memory_onboard.py --home $HERMES_HOME           # one command, dry-run by default"
@@ -188,10 +201,10 @@ install_verify() {
     # Check all core scripts exist and are importable
     for script in \
         state_db_remediate memory_audit memory_rewrite \
-        memory_health memory_maintenance \
+        memory_health memory_maintenance memory_project \
         temporal_memory temporal_migrate temporal_migrate_onboard \
         memory_auto_extract hermes_memory_intake_gate \
-        semantic_index semantic_query; do
+        memory_entry_index semantic_index semantic_query; do
         if [ -f "$SCRIPTS_DIR/${script}.py" ]; then
             if python3 -c "import sys; sys.path.insert(0, '$SCRIPTS_DIR'); import ${script}" 2>/dev/null; then
                 log "  ✓ ${script}.py"

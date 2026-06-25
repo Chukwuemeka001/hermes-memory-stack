@@ -144,6 +144,11 @@ class Ctx:
         self.from_step = args.from_step
         self.to_step = args.to_step
 
+        # projection (Phase 1): after onboarding, show what a budgeted memory
+        # projection would save. Read-only; safe in both dry-run and apply.
+        self.project = bool(getattr(args, "project", False))
+        self.project_budget = int(getattr(args, "project_budget", 2000))
+
         # state.db policy knobs (conservative defaults == RUNBOOK Step 2)
         self.retention_days = args.retention_days
         self.prune_closed = args.prune_closed
@@ -341,6 +346,19 @@ def step5_temporal_seed(ctx: Ctx) -> StepResult:
                       f"updated={ing.get('updated', 0)} — the rewrite will record provenance here")
 
 
+def _rewrite_review_note(manifest_path: str) -> str:
+    try:
+        with open(manifest_path, encoding="utf-8") as fh:
+            review = (json.load(fh).get("review") or {})
+    except Exception:
+        return ""
+    count = review.get("risky_count") or 0
+    if not count:
+        return ""
+    by_action = review.get("by_rewrite_action") or {}
+    return f"; REVIEW.md flags {count} high-impact change(s) {by_action} before apply"
+
+
 # -- Area 3 ----------------------------------------------------------------- #
 def step6_rewrite_render(ctx: Ctx) -> StepResult:
     if not os.path.exists(ctx.mem_audit):
@@ -352,8 +370,10 @@ def step6_rewrite_render(ctx: Ctx) -> StepResult:
         return _fail(rc, out, err, "rewrite render")
     # surface the render's own one-line summary
     line = next((l for l in out.splitlines() if l.startswith("[render] chars")), "")
-    return StepResult(True, f"proposals → {ctx.proposed_dir} (manifest.json). "
-                      + line.replace("[render] ", ""))
+    review_note = _rewrite_review_note(ctx.manifest)
+    return StepResult(True, f"proposals → {ctx.proposed_dir} "
+                      f"(manifest.json, REVIEW.md). "
+                      + line.replace("[render] ", "") + review_note)
 
 
 def step7_rewrite_apply(ctx: Ctx) -> StepResult:
@@ -601,6 +621,8 @@ def _run_steps(ctx: Ctx) -> int:
         results.append((n, res.summary, True))
 
     _final_summary(ctx, results, failed_at=None)
+    if ctx.project:
+        _project_summary(ctx)
     return 0
 
 
@@ -623,7 +645,10 @@ def _final_summary(ctx: Ctx, results, failed_at):
     elif ctx.dry_run:
         print(cyan("  ✓ Dry-run complete. Nothing live was modified."))
         print("  Reviewable proposals written under:")
-        print(bold(f"    {ctx.proposed_dir}/  (MEMORY.proposed.md, USER.proposed.md, manifest.json)"))
+        print(bold(f"    {ctx.proposed_dir}/  (MEMORY.proposed.md, USER.proposed.md, manifest.json, REVIEW.md)"))
+        review_note = _rewrite_review_note(ctx.manifest)
+        if review_note:
+            print(yellow("  Review gate:" + review_note.replace(";", "")))
         print("  When the proposals look right, apply for real with:")
         print(bold(f"    python3 {os.path.basename(__file__)} --home {ctx.home} --apply"))
     else:
@@ -632,6 +657,27 @@ def _final_summary(ctx: Ctx, results, failed_at):
         print("  Next: register the maintenance crons (see skills/memory-maintenance.md):")
         print(dim("    crons/memory-health-daily.json · crons/memory-temporal-sync.json"))
     hr("═")
+
+
+def _project_summary(ctx: Ctx):
+    """Phase 1 projection footer: show how much a budgeted memory projection
+    saves over brute-force injection. Read-only; never fails the onboard run."""
+    try:
+        import memory_project as MP  # noqa: WPS433
+        rep = MP.project(home=ctx.home, budget=ctx.project_budget,
+                         user_home=ctx.user_home)
+    except Exception as e:
+        print(dim(f"    (memory projection skipped: {e})"))
+        return
+    hr()
+    o, p, s = rep["original_tokens"], rep["projected_tokens"], rep["savings_pct"]
+    print(bold(f"  Memory projection (budget {rep['budget_tokens']} tokens):"))
+    print(green(f"    Your memory was {o} tokens. Projected to {p} tokens ({s}% savings)."))
+    print(dim(f"    {rep['entries_selected']}/{rep['entries_total']} entries kept · "
+              f"{rep['always_inject_count']} always-inject · "
+              f"{rep['projected_memory_chars']} chars"))
+    print(dim("    Inject the projected block with: "
+              f"memory_project.py --home {ctx.home} --budget {ctx.project_budget}"))
 
 
 # --------------------------------------------------------------------------- #
@@ -676,6 +722,12 @@ def build_parser() -> argparse.ArgumentParser:
     sdb.add_argument("--delete-compression-parents", default="no", choices=["yes", "no"],
                      help="delete superseded compression parents (default no)")
     sdb.add_argument("--vacuum", default="yes", choices=["yes", "no"], help="VACUUM after cleanup (default yes)")
+
+    proj = p.add_argument_group("projection (Phase 1 — budget-aware memory projection)")
+    proj.add_argument("--project", action="store_true",
+                      help="after onboarding, report what a budgeted memory projection saves")
+    proj.add_argument("--project-budget", type=int, default=2000, metavar="TOKENS",
+                      help="token budget for the --project report (default 2000)")
 
     p.add_argument("--version", action="version", version=f"%(prog)s {TOOL_VERSION}")
     return p

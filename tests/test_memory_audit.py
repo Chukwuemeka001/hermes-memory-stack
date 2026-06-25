@@ -371,6 +371,14 @@ class TestReviewRegressions(Base):
         self.assertNotEqual(durable["recommended_action"], "remove_after_archive")
         self.assertEqual(find(rep, "Deployed the gateway")["kind"], "status_update")
 
+    def test_R2b_expectation_and_frustration_are_durable_preferences(self):
+        rep = self._std([], usr_entries=[
+            "Memory OS expectation: tools should ACT, not just observe/report. User frustrated that all built memory tools were dry-run/read-only while live memory sat at 83%/92%. Apply fixes when safe — don't build observer tools and leave memory bloated."
+        ])
+        e = find(rep, "tools should ACT")
+        self.assertEqual(e["kind"], "preference_fact")
+        self.assertEqual(e["recommended_action"], "keep")
+
     def test_R3_complementary_versions_not_contradiction(self):
         rep = self._std([
             "Origin Candidate V3 model is active and live.",

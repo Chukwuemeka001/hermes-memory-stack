@@ -191,6 +191,13 @@ class TestArchiveAndRemove(Base):
         out = os.path.join(self.tmp, "proposed")
         res = MR.render(plan, out)
         man = json.load(open(res["manifest"]))
+        self.assertIn("review", man)
+        self.assertTrue(man["review"]["requires_human_review_before_apply"])
+        self.assertEqual(man["review"]["by_rewrite_action"].get("remove"), 1)
+        self.assertTrue(os.path.exists(res["review"]))
+        review_md = read(res["review"])
+        self.assertIn("High-impact rewrite review", review_md)
+        self.assertIn("memory#1", review_md)
         old_texts = [pp["old_text"] for pp in man["proposals"]]
         self.assertIn(text, old_texts, "removed entry's original must be in the manifest")
         # and written to an archive file

@@ -409,7 +409,58 @@ def _summarize(proposals: dict, out_files: dict) -> dict:
 # --------------------------------------------------------------------------- #
 # Manifest                                                                    #
 # --------------------------------------------------------------------------- #
+def high_impact_review(proposals: list[dict], *, limit: int = 12) -> dict:
+    """Summarize proposals that deserve human eyes before live apply.
+
+    This is intentionally redundant with the full manifest: operators should not
+    have to open a 1k-line JSON file to notice a high-impact removal. The summary
+    highlights every entry that disappears from hot memory plus the largest
+    archive/condense replacements. It is deterministic and purely extractive.
+    """
+    risky_actions = {"remove", "archive_pointer", "rewrite_to_pointer", "merge_absorb"}
+    items = []
+    for p in proposals:
+        action = p.get("rewrite_action")
+        if action not in risky_actions:
+            continue
+        old = p.get("old_text") or ""
+        new = p.get("new_text")
+        item = {
+            "ref": p.get("ref"),
+            "store": p.get("store"),
+            "kind": p.get("kind"),
+            "audit_action": p.get("audit_action"),
+            "rewrite_action": action,
+            "status": p.get("status"),
+            "old_chars": len(old),
+            "new_chars": 0 if new is None else len(new),
+            "char_delta": p.get("char_delta"),
+            "rationale": p.get("rationale"),
+            "archive_destination": (p.get("archive") or {}).get("destination"),
+            "merge_into": p.get("merge_into"),
+            "old_preview": old[:220].replace("\n", " "),
+            "new_preview": None if new is None else new[:220].replace("\n", " "),
+        }
+        # Rank removals first, then biggest shrink. Human review should focus on
+        # irreversible-looking hot-memory disappearance before benign compression.
+        rank = (0 if action == "remove" else 1, item["char_delta"] or 0)
+        items.append((rank, item))
+    items.sort(key=lambda x: (x[0][0], x[0][1]))
+    selected = [i for _, i in items[:limit]]
+    by_action = {}
+    for _, i in items:
+        by_action[i["rewrite_action"]] = by_action.get(i["rewrite_action"], 0) + 1
+    return {
+        "requires_human_review_before_apply": bool(items),
+        "risky_count": len(items),
+        "by_rewrite_action": by_action,
+        "top_high_impact": selected,
+        "note": "Review these before --apply/--yes. Originals are archived, but false-positive removals still hurt operator trust.",
+    }
+
+
 def build_manifest(plan: dict, archives: list[dict]) -> dict:
+    proposals = [dict(p) for p in plan["proposals"]]
     return {
         "schema": "hermes-memory-rewrite-manifest/1", "tool_version": TOOL_VERSION,
         "generated_at": plan["generated_at"], "home": plan["home"],
@@ -418,9 +469,38 @@ def build_manifest(plan: dict, archives: list[dict]) -> dict:
         "proposed": {s: {"chars": f["proposed_chars"],
                          "sha256": MA.sha256_text(f["proposed_text"])}
                      for s, f in plan["_out_files_text"].items()},
-        "proposals": [dict(p) for p in plan["proposals"]],
+        "proposals": proposals,
         "archives": archives, "summary": plan["summary"],
+        "review": high_impact_review(proposals),
     }
+
+
+def render_review_markdown(manifest: dict) -> str:
+    review = manifest.get("review") or {}
+    L = ["# High-impact rewrite review", "",
+         manifest.get("generated_at", ""), "",
+         "Review this file before applying live hot-memory rewrites.", "",
+         f"Risky changes: {review.get('risky_count', 0)}",
+         "By action: " + ", ".join(f"{k}={v}" for k, v in sorted((review.get('by_rewrite_action') or {}).items())),
+         ""]
+    for item in review.get("top_high_impact", []):
+        L.append(f"## {item['ref']} — {item['rewrite_action']} ({item['old_chars']}→{item['new_chars']} chars)")
+        L.append(f"- store/kind: {item['store']} / {item['kind']}")
+        L.append(f"- audit action: {item['audit_action']}")
+        L.append(f"- rationale: {item['rationale']}")
+        if item.get("archive_destination"):
+            L.append(f"- archive: {item['archive_destination']}")
+        if item.get("merge_into"):
+            L.append(f"- merge into: {item['merge_into']}")
+        L.append(f"- old: {item['old_preview']}")
+        if item.get("new_preview") is None:
+            L.append("- new: REMOVED FROM HOT MEMORY (original preserved in manifest/archive)")
+        else:
+            L.append(f"- new: {item['new_preview']}")
+        L.append("")
+    if not review.get("top_high_impact"):
+        L.append("No high-impact removals/archive replacements were proposed.")
+    return "\n".join(L).rstrip() + "\n"
 
 
 # --------------------------------------------------------------------------- #
@@ -474,8 +554,11 @@ def render(plan: dict, out_dir: str, *, archive_dir: str | None = None) -> dict:
     manifest_path = os.path.join(out_dir, "manifest.json")
     with open(manifest_path, "w", encoding="utf-8") as fh:
         json.dump(manifest, fh, indent=2)
+    review_path = os.path.join(out_dir, "REVIEW.md")
+    with open(review_path, "w", encoding="utf-8") as fh:
+        fh.write(render_review_markdown(manifest))
     return {"out_dir": out_dir, "archive_dir": arch_dir, "proposed_files": written,
-            "manifest": manifest_path, "archives": archives}
+            "manifest": manifest_path, "review": review_path, "archives": archives}
 
 
 # --------------------------------------------------------------------------- #
@@ -690,6 +773,11 @@ def cmd_render(args) -> int:
     print(f"[render] proposed files: {list(res['proposed_files'].values())}")
     print(f"[render] archives: {len(res['archives'])} originals preserved under {res['archive_dir']}")
     print(f"[render] manifest: {res['manifest']}")
+    print(f"[render] REVIEW: {res['review']}")
+    review = MR_review = high_impact_review(plan["proposals"])
+    if MR_review.get("risky_count"):
+        print(f"[render] REVIEW REQUIRED before apply: {MR_review['risky_count']} high-impact change(s) "
+              f"{MR_review['by_rewrite_action']}")
     print(f"[render] chars {s['original_chars']}→{s['proposed_chars']} (−{s['reduction_chars']}, "
           f"{s['reduction_pct']}%); kept={s['kept']} rewrite={s['rewritten_to_pointer']} "
           f"archive={s['archived_pointer']} merge={s['merged_absorbed']} remove={s['removed']} "

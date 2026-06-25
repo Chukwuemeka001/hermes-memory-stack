@@ -110,6 +110,8 @@ class TestOnboardDryAndHelp(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(wd, "mem-audit.json")))
         self.assertTrue(os.path.exists(os.path.join(wd, "proposed", "manifest.json")))
         self.assertTrue(os.path.exists(os.path.join(wd, "proposed", "MEMORY.proposed.md")))
+        self.assertTrue(os.path.exists(os.path.join(wd, "proposed", "REVIEW.md")))
+        self.assertIn("REVIEW.md", r.stdout)
 
     def test_explicit_dry_run_skips_every_mutation(self):
         wd = os.path.join(self.root, "wd_explicit")

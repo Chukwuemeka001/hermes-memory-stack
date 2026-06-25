@@ -391,7 +391,7 @@ def build_user_entries(root: str, rnd: random.Random, spec: dict,
     e: list[str] = []
     # ---- BASE (byte-stable) ---- #
     # durable preferences -> keep (incl the metric-bearing regression)
-    e.append("Emeka Okpara-Ogbonnia: trader-engineer hybrid, BSO RPN, money-minded, anti-pivot.")
+    e.append("Sample Owner: trader-engineer hybrid, clinician, money-minded, anti-pivot.")
     e.append("Core execution: blunt correction, brief plan then action, plain terminal output.")
     e.append("User prefers risk capped at 2% of account per trade, always.")  # metric pref regression
     e.append("Always pin dependencies to v2.0.1 style exact versions for reproducibility.")

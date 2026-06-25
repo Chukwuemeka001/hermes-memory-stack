@@ -54,8 +54,8 @@ LEADING_DATE_RE = re.compile(
     r"^\s*[-*]?\s*(?:[\w ]+[:,]\s*)?(?:\()?20\d{2}-\d{2}-\d{2}\b")
 # Durable preference verbs (stative / normative, generic present).
 PREF_RE = re.compile(
-    r"\b(prefers?|wants?|expects?|requires?|needs?|always|never|by default|"
-    r"insists?|likes?|dislikes?|standing rule|hates?|rule:|policy:)\b", re.I)
+    r"\b(prefers?|wants?|expects?|expectations?|requires?|needs?|always|never|by default|"
+    r"insists?|likes?|dislikes?|standing rule|hates?|frustrated|rule:|policy:)\b", re.I)
 # Pointer markers — say WHERE detail lives.
 POINTER_RE = re.compile(
     r"(~/|/Users/|skill:|\bskill\b|notes/|\.md\b|\bcanonical\b|\bread \b|"

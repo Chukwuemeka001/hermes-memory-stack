@@ -33,6 +33,8 @@ EXPECTED_SCRIPTS = [
     # Tier 1: Semantic
     "semantic_index.py",
     "semantic_query.py",
+    "memory_entry_index.py",
+    "memory_project.py",
     "semantic_reindex.sh",
     # Tier 2: Auto-extraction
     "memory_auto_extract.py",
@@ -108,12 +110,14 @@ class TestInstall(unittest.TestCase):
         self.assertEqual(r.returncode, 0, f"install failed: {r.stderr}")
         scripts_dir = os.path.join(self.home, "scripts")
         for name in ["state_db_remediate.py", "memory_audit.py", "memory_rewrite.py",
-                      "memory_health.py", "memory_health_cron.sh",
+                      "memory_health.py", "memory_project.py", "memory_health_cron.sh",
                       "memory_maintenance.py", "memory_maintenance_cron.sh",
                       "memory_onboard.py",    # one-command Area 1→5 driver (INTEG-10)
                       "memory_signals.py"]:   # memory_audit imports it (INTEG-8)
             path = os.path.join(scripts_dir, name)
             self.assertTrue(os.path.exists(path), f"{name} not installed by remediation tier")
+        self.assertTrue(os.path.exists(os.path.join(self.home, "skills", "memory-stack", "memory-projection.md")),
+                        "projection skill doc not installed by remediation tier")
 
     def test_installed_modules_import_cleanly(self):
         """INTEG-8 regression: a module a tier copies must have ALL its dependencies
@@ -128,7 +132,7 @@ class TestInstall(unittest.TestCase):
         env["HOME"] = self.tmp
         env["HERMES_HOME"] = self.home
         for name in ["memory_audit.py", "temporal_memory.py", "hermes_memory_intake_gate.py",
-                     "memory_onboard.py"]:
+                     "memory_onboard.py", "memory_project.py"]:
             p = subprocess.run(["python3", os.path.join(scripts_dir, name), "--help"],
                                capture_output=True, text=True, timeout=30, env=env)
             self.assertEqual(p.returncode, 0,
