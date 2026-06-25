@@ -44,6 +44,11 @@ The installed script directory also lagged behind the package: session semantic 
 ```text
 relevance_source: memories-index:20 hits via subprocess:python3.14
 ```
+7. Expose both session and memory collection counts through daemon ping so an empty/stale `memories` collection is visible:
+
+```text
+{"collection_counts": {"sessions": 224, "memories": 61}}
+```
 
 ## Verification commands
 

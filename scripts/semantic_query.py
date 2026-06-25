@@ -276,7 +276,8 @@ _MAX_EMBED_BATCH = 512   # cap one embed request (hot-memory files are small by 
 def _handle_request(req: dict) -> dict:
     mode = (req.get("mode") or "semantic").lower()
     if mode == "ping":
-        return {"ok": True, "pong": True, "collection_count": _safe_count()}
+        counts = _collection_counts()
+        return {"ok": True, "pong": True, "collection_count": counts.get(COLLECTION_NAME, 0), "collection_counts": counts}
     if mode == "embed":
         # INTEG-9: embed arbitrary texts (e.g. hot-memory entries for semantic
         # near-duplicate detection in memory_audit.py --semantic). The daemon already
@@ -309,6 +310,23 @@ def _handle_request(req: dict) -> dict:
     else:
         hits = semantic_search(query, n_results=n, db_path=db_path)
     return {"ok": True, "mode": mode, "count": len(hits), "results": hits}
+
+
+def _collection_counts() -> dict:
+    """Return visible Chroma collection counts for daemon health checks."""
+    try:
+        client = _get_chroma()
+        counts = {}
+        for col in client.list_collections():
+            try:
+                counts[col.name] = int(col.count())
+            except Exception:
+                counts[col.name] = 0
+        if COLLECTION_NAME not in counts:
+            counts[COLLECTION_NAME] = _safe_count()
+        return counts
+    except Exception:
+        return {COLLECTION_NAME: _safe_count()}
 
 
 def _safe_count() -> int:
