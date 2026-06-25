@@ -29,7 +29,7 @@ Current headline numbers:
 
 | Metric | Result |
 |---|---:|
-| Full test suite | **384/384 passing** |
+| Full test suite | **393/393 passing** |
 | Tier-1 deterministic harness | **WARN** — 9 PASS / 5 WARN / 0 FAIL |
 | Query-aware required-fact recall | **82.1%** |
 | Query-aware harness token savings | **27.8%** |
@@ -70,7 +70,7 @@ bash install.sh all
 ```
 
 This installs:
-- 22 Python scripts + 6 shell scripts
+- 23 Python scripts + 6 shell scripts
 - Semantic retrieval daemon (ChromaDB)
 - Auto-extraction (dry-run by default)
 - Temporal versioning
@@ -211,19 +211,22 @@ python3 scripts/memory_harness.py --json
 python3 scripts/memory_shadow.py --home ~/.hermes \
   --query "current user turn" --budget 1500 --json
 
+# Shadow rollout report: summarize JSONL and decide PASS/WARN/FAIL
+python3 scripts/memory_shadow_report.py reports/shadow-projection-$(date +%F).jsonl --out reports/shadow-report-$(date +%F).md
+
 # Optional model-backed Tier-2 smoke (uses Claude Code CLI subscription auth)
 python3 scripts/memory_harness.py --tier2 --tier2-grader claude-cli \
   --tier2-task safety-leaked-api-key --tier2-timeout 180 --json
 ```
 
-**384 tests passing.** Unit/E2E tests use synthetic data and never touch live memory by default.
+**393 tests passing.** Unit/E2E tests use synthetic data and never touch live memory by default.
 
 ## What's included
 
 | Category | Files |
 |---|---|
-| Scripts | 22 Python + 6 shell |
-| Tests | 14 test files (384 tests) |
+| Scripts | 23 Python + 6 shell |
+| Tests | 15 test files (393 tests) |
 | Skills | 12 operator docs |
 | Crons | 5 no-agent definitions |
 | Plans | 5 design documents |

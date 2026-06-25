@@ -31,7 +31,7 @@ The short version:
 
 | Result | Value |
 |---|---:|
-| Full test suite | **384/384 passing** |
+| Full test suite | **393/393 passing** |
 | Tier-1 deterministic tasks | **14** |
 | Tier-1 overall | **WARN** — 9 PASS / 5 WARN / 0 FAIL |
 | Query-aware required-fact recall | **82.1%** |
@@ -39,7 +39,8 @@ The short version:
 | Query-aware token savings on harness fixtures | **27.8%** |
 | Real Tier-2 Claude answer-quality smoke | **PASS** on `safety-leaked-api-key` |
 | Full Tier-2 Claude answer-quality run | **WARN** — 9 PASS / 5 WARN / 0 FAIL / 0 BLOCKED / 0 ERROR |
-
+| Shadow-mode real-turn report | **WARN** — 74.5% savings, semantic source 100%, answer-usage not yet captured |
+| Safety raw-block logging | **0 events** |
 This is deliberately not presented as “perfect.” Five fixture tasks still warn under Tier 1. That is useful: the harness is able to show where projection loses required context instead of pretending token savings means quality.
 
 ---
@@ -75,7 +76,7 @@ python3 -m unittest discover -s tests -v
 Current result:
 
 ```text
-Ran 384 tests in 23.709s
+Ran 393 tests in 23.704s
 OK
 ```
 

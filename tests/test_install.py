@@ -36,6 +36,7 @@ EXPECTED_SCRIPTS = [
     "memory_entry_index.py",
     "memory_project.py",
     "memory_shadow.py",
+    "memory_shadow_report.py",
     "memory_harness.py",
     "memory_harness_tasks.json",
     "semantic_reindex.sh",
