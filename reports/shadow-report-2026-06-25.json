@@ -2,22 +2,22 @@
   "failures": [],
   "inputs": {
     "errors": [],
-    "events": 1,
-    "shadow_events": 1
+    "events": 9,
+    "shadow_events": 9
   },
   "metrics": {
-    "answer_usage_events": 1,
-    "avg_full_tokens": 17,
-    "avg_projected_tokens": 17,
-    "avg_savings_pct": 0.0,
-    "avg_selected_entries": 2,
-    "avg_skipped_entries": 0,
+    "answer_usage_events": 2,
+    "avg_full_tokens": 4648,
+    "avg_projected_tokens": 1360.56,
+    "avg_savings_pct": 70.72,
+    "avg_selected_entries": 23.89,
+    "avg_skipped_entries": 37.11,
     "determinism_violations": 0,
     "duplicate_turns": 0,
     "min_answer_turns": 5,
-    "min_savings_pct": 0.0,
+    "min_savings_pct": 57.5,
     "over_budget_events": 0,
-    "p95_projected_tokens": 17.0,
+    "p95_projected_tokens": 1976.0,
     "raw_block_events": 0,
     "safety_pin_drops": 0,
     "semantic_source_rate": 1.0,
@@ -38,7 +38,8 @@
     ]
   },
   "sources": {
-    "memories-index:0 hits via direct-empty+subprocess:python3.14": 1
+    "memories-index:20 hits via direct": 2,
+    "memories-index:20 hits via subprocess:python3.14": 7
   },
   "status": "WARN",
   "tool": "memory_shadow_report",
@@ -46,18 +47,170 @@
   "top_selected_refs": [
     [
       "memory#0",
-      1
+      9
+    ],
+    [
+      "memory#10",
+      9
+    ],
+    [
+      "memory#11",
+      9
+    ],
+    [
+      "memory#16",
+      9
+    ],
+    [
+      "memory#17",
+      9
+    ],
+    [
+      "memory#18",
+      9
+    ],
+    [
+      "memory#21",
+      9
+    ],
+    [
+      "memory#3",
+      9
+    ],
+    [
+      "memory#4",
+      9
+    ],
+    [
+      "memory#6",
+      9
     ],
     [
       "user#0",
-      1
+      9
+    ],
+    [
+      "memory#39",
+      8
+    ],
+    [
+      "memory#40",
+      8
+    ],
+    [
+      "memory#41",
+      8
+    ],
+    [
+      "memory#2",
+      7
+    ],
+    [
+      "memory#7",
+      7
+    ],
+    [
+      "memory#8",
+      7
+    ],
+    [
+      "user#10",
+      7
+    ],
+    [
+      "memory#22",
+      6
+    ],
+    [
+      "memory#30",
+      5
     ]
   ],
-  "top_skipped_refs": [],
+  "top_skipped_refs": [
+    [
+      "memory#12",
+      9
+    ],
+    [
+      "memory#14",
+      9
+    ],
+    [
+      "memory#15",
+      9
+    ],
+    [
+      "memory#20",
+      9
+    ],
+    [
+      "memory#24",
+      9
+    ],
+    [
+      "memory#28",
+      9
+    ],
+    [
+      "memory#35",
+      9
+    ],
+    [
+      "memory#38",
+      9
+    ],
+    [
+      "memory#5",
+      9
+    ],
+    [
+      "memory#9",
+      9
+    ],
+    [
+      "user#1",
+      9
+    ],
+    [
+      "user#11",
+      9
+    ],
+    [
+      "user#12",
+      9
+    ],
+    [
+      "user#13",
+      9
+    ],
+    [
+      "user#15",
+      9
+    ],
+    [
+      "user#16",
+      9
+    ],
+    [
+      "user#17",
+      9
+    ],
+    [
+      "user#5",
+      9
+    ],
+    [
+      "user#6",
+      9
+    ],
+    [
+      "memory#32",
+      8
+    ]
+  ],
   "top_used_missing_refs": [],
   "used_missing_examples": [],
   "warnings": [
-    "average savings 0.0% below threshold 99.0%",
-    "only 1 answer_usage event(s); need >= 5 for rollout confidence"
+    "only 2 answer_usage event(s); need >= 5 for rollout confidence"
   ]
 }

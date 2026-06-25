@@ -79,6 +79,8 @@ class TestMemoryShadowCapture(unittest.TestCase):
             "--query", "something",
             "--answer-text", "No overlap here.",
             "--out", os.path.join(home, "shadow.jsonl"),
+            "--report-md", os.path.join(home, "strict-report.md"),
+            "--report-json", os.path.join(home, "strict-report.json"),
             "--strict",
             "--min-avg-savings", "99",
         ], capture_output=True, text=True, timeout=60)
