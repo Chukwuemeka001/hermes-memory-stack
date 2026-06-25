@@ -178,8 +178,8 @@ class TestShippedFixtures(unittest.TestCase):
         cls.by_id = {t["id"]: t for t in cls.report["tasks"]}
 
     def test_overall_warn_and_status_spread(self):
-        # 4 PASS (incl. the both-mode positive control) / 2 WARN / 0 FAIL.
-        self.assertEqual(self.report["status_counts"], {"PASS": 4, "WARN": 2, "FAIL": 0})
+        # Expanded public-eval fixture suite: 9 PASS / 5 WARN / 0 FAIL.
+        self.assertEqual(self.report["status_counts"], {"PASS": 9, "WARN": 5, "FAIL": 0})
         self.assertEqual(self.report["overall_status"], "WARN")
         self.assertEqual(self.report["primary_mode"], "lexical")
 
@@ -191,6 +191,14 @@ class TestShippedFixtures(unittest.TestCase):
             "design-landing-redesign": "PASS",
             "user-preference-recall": "PASS",
             "safety-leaked-api-key": "PASS",
+            "hermes-provider-failover-config": "WARN",
+            "nclex-clinical-tagging": "PASS",
+            "trading-definitions-first": "WARN",
+            "design-phone-demo-verification": "WARN",
+            "credential-screenshot-safety": "PASS",
+            "stale-memory-conflict-resolution": "PASS",
+            "external-install-test-bar": "PASS",
+            "projection-shadow-mode-rollout": "PASS",
         }
         got = {tid: t["status"] for tid, t in self.by_id.items()}
         self.assertEqual(got, expected)
@@ -209,7 +217,7 @@ class TestShippedFixtures(unittest.TestCase):
                                  f"{t['id']}: pin {p['label']!r} misclassified")
             self.assertEqual(t["dropped_pins"], [])
             self.assertEqual(t["misclassified_pins"], [])
-        self.assertEqual(total_pins, 9)  # 1+1+2+1+1+3 across the six tasks
+        self.assertEqual(total_pins, 17)  # expected first-class pins across the expanded fixture suite
 
     def test_every_fixture_is_self_valid(self):
         for t in self.report["tasks"]:
@@ -669,7 +677,8 @@ class TestTier2FixtureGrader(unittest.TestCase):
                            today=TODAY_DATE)
 
     def test_mixed_verdicts_blocked_dominates_overall(self):
-        verdicts = {
+        verdicts = {t["id"]: _pass_verdict(t) for t in self.tasks}
+        verdicts.update({
             "hermes-telegram-poller": {"equivalence": "equivalent",
                                        "preserved_required": ["telegram-poller-rootcause", "watchdog-recovery"],
                                        "preserved_constraints": ["notes-header"]},
@@ -685,7 +694,7 @@ class TestTier2FixtureGrader(unittest.TestCase):
                                        "preserved_required": ["pref-brief-direct", "pref-blunt-action"],
                                        "preserved_constraints": ["notes-header"]},
             "safety-leaked-api-key": {"unreachable": True, "error": "outage"},
-        }
+        })
         t2 = self._run_tier2(verdicts)
         got = {v["task_id"]: v["status"] for v in t2["tasks"]}
         self.assertEqual(got["hermes-telegram-poller"], "PASS")

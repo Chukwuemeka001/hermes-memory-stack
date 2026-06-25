@@ -18,14 +18,14 @@ The short version:
 | Result | Value |
 |---|---:|
 | Full test suite | **377/377 passing** |
-| Tier-1 deterministic tasks | **6** |
-| Tier-1 overall | **WARN** — 4 PASS / 2 WARN / 0 FAIL |
-| Query-aware required-fact recall | **83.3%** |
-| Static fallback required-fact recall | **41.7%** |
-| Query-aware token savings on harness fixtures | **35.3%** |
+| Tier-1 deterministic tasks | **14** |
+| Tier-1 overall | **WARN** — 9 PASS / 5 WARN / 0 FAIL |
+| Query-aware required-fact recall | **82.1%** |
+| Static fallback required-fact recall | **64.3%** |
+| Query-aware token savings on harness fixtures | **27.8%** |
 | Real Tier-2 Claude answer-quality smoke | **PASS** on `safety-leaked-api-key` |
 
-This is deliberately not presented as “perfect.” Two fixture tasks still warn under Tier 1. That is useful: the harness is able to show where projection loses required context instead of pretending token savings means quality.
+This is deliberately not presented as “perfect.” Five fixture tasks still warn under Tier 1. That is useful: the harness is able to show where projection loses required context instead of pretending token savings means quality.
 
 ---
 
@@ -86,11 +86,11 @@ Current result:
 
 ```text
 overall_status: WARN
-status_counts: {'PASS': 4, 'WARN': 2, 'FAIL': 0}
-static mean required recall: 41.7%
-static token savings: 34.4%
-lexical/query-aware mean required recall: 83.3%
-lexical/query-aware token savings: 35.3%
+status_counts: {'PASS': 9, 'WARN': 5, 'FAIL': 0}
+static mean required recall: 64.3%
+static token savings: 27.4%
+lexical/query-aware mean required recall: 82.1%
+lexical/query-aware token savings: 27.8%
 ```
 
 ### Tier-2 answer-quality smoke test
@@ -142,19 +142,22 @@ Tier 1 compares two projection modes:
 
 | Mode | Gate? | Mean required recall | PASS/WARN/FAIL | Full tokens | Projected tokens | Savings |
 |---|:--:|--:|:--:|--:|--:|--:|
-| `static` |  | **41.7%** | 1 / 3 / 2 | 1235 | 810 | **34.4%** |
-| `lexical` | ✅ | **83.3%** | 4 / 2 / 0 | 1235 | 799 | **35.3%** |
+| `static` |  | **64.3%** | 6 / 6 / 2 | 3221 | 2337 | **27.4%** |
+| `lexical` | ✅ | **82.1%** | 9 / 5 / 0 | 3221 | 2326 | **27.8%** |
 
 ### What this means
 
 Query awareness matters. Static projection saves tokens, but it drops too much needed context. Query-aware projection preserves substantially more required context at roughly the same token savings.
 
-The harness currently reports two WARN tasks under the query-aware gate:
+The harness currently reports five WARN tasks under the query-aware gate:
 
 | Task | Status | Missing required context |
 |---|---|---|
 | `nclex-pharm-rationale` | WARN | `nclex-error-journal` |
 | `trading-origin-candidate-v3` | WARN | `trading-poi-spec` |
+| `hermes-provider-failover-config` | WARN | `xiaomi-fallback-role` |
+| `trading-definitions-first` | WARN | `definition-dictionary-path` |
+| `design-phone-demo-verification` | WARN | `frontend-e2e-verification` |
 
 That is a credibility point, not a failure of the evaluation. The harness is not rubber-stamping the system. It shows where projection needs improvement.
 
@@ -223,7 +226,7 @@ This evaluation is the beginning of that proof.
 
 ## Current limitations
 
-- The Tier-1 fixture set is small and synthetic: 6 representative/adversarial tasks.
+- The Tier-1 fixture set is still small and synthetic: 14 representative/adversarial tasks across Hermes, NCLEX, trading, design, safety, memory operations, exportability, and rollout.
 - The `lexical` mode is a deterministic proxy, not the production embedding model.
 - Tier-2 has only been run as a one-task real Claude smoke so far.
 - Tier-2 uses a single judge model; future versions should add repeated runs or multi-judge evaluation.

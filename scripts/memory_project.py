@@ -125,13 +125,13 @@ RECENCY_NEUTRAL = 0.5
 # --------------------------------------------------------------------------- #
 OPERATIONAL_TOPIC_RE = re.compile(
     r"\b(routing|provider failover|failover automation|restart protocol|"
-    r"model routing|provider config|fallback sequence)\b", re.I)
+    r"model routing|provider config|fallback sequence|design resources|design-resource-index)\b", re.I)
 SAFETY_PIN_RE = re.compile(
     r"\b(api key policy|execution safety|live execution|trade approval|"
     r"approval before.*(?:trade|live execution|live order)|"
-    r"do not (?:type|share|expose|commit|log|print|hardcode|connect|place|expand|scale|automate|deploy|enable)|"
-    r"don't (?:type|share|expose|commit|log|print|hardcode|connect|place|expand|scale|automate|deploy|enable)|"
-    r"never (?:share|expose|commit|log|print|hardcode).*(?:credential|secret|password|api key|token)|"
+    r"do not (?:type|share|expose|commit|log|print|hardcode|connect|place|expand|scale|automate|deploy|enable|gate|follow)|"
+    r"don't (?:type|share|expose|commit|log|print|hardcode|connect|place|expand|scale|automate|deploy|enable|gate|follow)|"
+    r"never (?:type|share|expose|commit|log|print|hardcode).*(?:credential|secret|password|api key|token)|"
     r"(?:no|never) (?:live|real)[- ]?(?:trade|trades|order|orders|execution|money)|"
     r"live (?:trade|trades|execution|order|orders)|"
     r"do not scale before proof|do not click.*(?:permission dialog|payment ui))\b", re.I | re.S)

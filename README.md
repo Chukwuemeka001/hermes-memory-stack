@@ -29,12 +29,12 @@ Current headline numbers:
 | Metric | Result |
 |---|---:|
 | Full test suite | **377/377 passing** |
-| Tier-1 deterministic harness | **WARN** — 4 PASS / 2 WARN / 0 FAIL |
-| Query-aware required-fact recall | **83.3%** |
-| Query-aware harness token savings | **35.3%** |
+| Tier-1 deterministic harness | **WARN** — 9 PASS / 5 WARN / 0 FAIL |
+| Query-aware required-fact recall | **82.1%** |
+| Query-aware harness token savings | **27.8%** |
 | Real Tier-2 Claude answer-quality smoke | **PASS** on `safety-leaked-api-key` |
 
-The evaluation is intentionally honest: two Tier-1 tasks still warn because projection drops required context. That is the point — token savings is not treated as quality unless required context and answer quality survive.
+The evaluation is intentionally honest: five Tier-1 tasks still warn because projection drops required context. That is the point — token savings is not treated as quality unless required context and answer quality survive.
 
 ## Quick start
 
@@ -162,11 +162,11 @@ python3 scripts/memory_onboard.py --home ~/.hermes --apply
 
 | Area | What | Mutates? | Gate |
 |---|---|---|---|
-| 1. State.db cleanup | Audit → simulate → apply | Yes | `--confirm-apply`, gateway stopped |
-| 2. Memory audit | Classify + score every entry | No | Read-only |
-| 3. Pointer rewrite | Condense dumps → pointers | Yes | `--confirm-apply`, archive-first |
-| 4. Temporal migration | Version everything | Yes | `--confirm-apply`, sidecar only |
-| 5. Maintenance | Health check + drift detection | No | Read-only |
+| 1. State.db cleanup | `state_db_remediate.py` audit → simulate → apply | Yes | `--confirm-apply`, gateway stopped |
+| 2. Memory audit | `memory_audit.py` classify + score every entry | No | Read-only |
+| 3. Pointer rewrite | `memory_rewrite.py` condense dumps → pointers | Yes | `--confirm-apply`, archive-first |
+| 4. Temporal migration | `temporal_migrate_onboard.py` version everything | Yes | `--confirm-apply`, sidecar only |
+| 5. Maintenance | `memory_health.py` + `memory_maintenance.py` health check + drift detection | No | Read-only |
 
 Safety rules:
 - **Archive-first**: every mutation archives the original with SHA-256

@@ -10,35 +10,35 @@
   ],
   "primary_mode": "lexical",
   "recall_warn_floor": 0.5,
-  "tasks_total": 6,
+  "tasks_total": 14,
   "status_counts": {
-    "PASS": 4,
-    "WARN": 2,
+    "PASS": 9,
+    "WARN": 5,
     "FAIL": 0
   },
   "overall_status": "WARN",
   "per_mode": {
     "static": {
       "is_primary_gate": false,
-      "original_tokens": 1235,
-      "projected_tokens": 810,
-      "savings_pct": 34.4,
-      "mean_required_recall_pct": 41.7,
+      "original_tokens": 2686,
+      "projected_tokens": 1950,
+      "savings_pct": 27.4,
+      "mean_required_recall_pct": 64.3,
       "status_counts": {
-        "PASS": 1,
-        "WARN": 3,
+        "PASS": 6,
+        "WARN": 6,
         "FAIL": 2
       }
     },
     "lexical": {
       "is_primary_gate": true,
-      "original_tokens": 1235,
-      "projected_tokens": 799,
-      "savings_pct": 35.3,
-      "mean_required_recall_pct": 83.3,
+      "original_tokens": 2686,
+      "projected_tokens": 1939,
+      "savings_pct": 27.8,
+      "mean_required_recall_pct": 82.1,
       "status_counts": {
-        "PASS": 4,
-        "WARN": 2,
+        "PASS": 9,
+        "WARN": 5,
         "FAIL": 0
       }
     }
@@ -555,6 +555,642 @@
       "warn_reasons": [],
       "per_mode_status": {
         "static": "FAIL",
+        "lexical": "PASS"
+      }
+    },
+    {
+      "id": "hermes-provider-failover-config",
+      "category": "hermes-troubleshooting",
+      "query": "configure Hermes provider failover without burning GBrain API credits",
+      "budget_tokens": 150,
+      "original_tokens": 174,
+      "optional_capacity": 63,
+      "min_budget_for_required": 166,
+      "budget_can_hold_required": false,
+      "primary_mode": "lexical",
+      "fixture_valid": true,
+      "control_required_recall": 1.0,
+      "missing_in_control": [],
+      "pins": [
+        {
+          "label": "gbrain-api-credit-pin",
+          "store": "memory",
+          "expected": "safety",
+          "actual": "safety",
+          "survived_budget_zero": true
+        }
+      ],
+      "dropped_pins": [],
+      "misclassified_pins": [],
+      "modes": [
+        {
+          "mode": "static",
+          "budget_tokens": 150,
+          "original_tokens": 174,
+          "projected_tokens": 140,
+          "savings_pct": 19.5,
+          "required_total": 2,
+          "required_recall": 0.5,
+          "required_recall_pct": 50.0,
+          "missing_required": [
+            "xiaomi-fallback-role"
+          ],
+          "missing_droppable": [
+            "xiaomi-fallback-role"
+          ],
+          "missing_unfittable": [],
+          "entries_selected": 5,
+          "entries_total": 6,
+          "selected_precision": 0.25,
+          "gold_uncontested": false,
+          "relevance_source": "disabled:no-query",
+          "status": "WARN",
+          "is_primary": false,
+          "advisories": []
+        },
+        {
+          "mode": "lexical",
+          "budget_tokens": 150,
+          "original_tokens": 174,
+          "projected_tokens": 140,
+          "savings_pct": 19.5,
+          "required_total": 2,
+          "required_recall": 0.5,
+          "required_recall_pct": 50.0,
+          "missing_required": [
+            "xiaomi-fallback-role"
+          ],
+          "missing_droppable": [
+            "xiaomi-fallback-role"
+          ],
+          "missing_unfittable": [],
+          "entries_selected": 5,
+          "entries_total": 6,
+          "selected_precision": 0.25,
+          "gold_uncontested": false,
+          "relevance_source": "memories-index:3 hits",
+          "status": "WARN",
+          "is_primary": true,
+          "advisories": []
+        }
+      ],
+      "status": "WARN",
+      "fail_reasons": [],
+      "warn_reasons": [
+        "[lexical] required recall 50.0%; dropped (could fit): ['xiaomi-fallback-role']"
+      ],
+      "per_mode_status": {
+        "static": "WARN",
+        "lexical": "WARN"
+      }
+    },
+    {
+      "id": "nclex-clinical-tagging",
+      "category": "nclex",
+      "query": "rewrite the beta blocker card with the clinical tag and mark rewritten questions",
+      "budget_tokens": 145,
+      "original_tokens": 147,
+      "optional_capacity": 145,
+      "min_budget_for_required": 98,
+      "budget_can_hold_required": true,
+      "primary_mode": "lexical",
+      "fixture_valid": true,
+      "control_required_recall": 1.0,
+      "missing_in_control": [],
+      "pins": [],
+      "dropped_pins": [],
+      "misclassified_pins": [],
+      "modes": [
+        {
+          "mode": "static",
+          "budget_tokens": 145,
+          "original_tokens": 147,
+          "projected_tokens": 132,
+          "savings_pct": 10.2,
+          "required_total": 3,
+          "required_recall": 1.0,
+          "required_recall_pct": 100.0,
+          "missing_required": [],
+          "missing_droppable": [],
+          "missing_unfittable": [],
+          "entries_selected": 5,
+          "entries_total": 6,
+          "selected_precision": 0.6,
+          "gold_uncontested": false,
+          "relevance_source": "disabled:no-query",
+          "status": "PASS",
+          "is_primary": false,
+          "advisories": []
+        },
+        {
+          "mode": "lexical",
+          "budget_tokens": 145,
+          "original_tokens": 147,
+          "projected_tokens": 132,
+          "savings_pct": 10.2,
+          "required_total": 3,
+          "required_recall": 1.0,
+          "required_recall_pct": 100.0,
+          "missing_required": [],
+          "missing_droppable": [],
+          "missing_unfittable": [],
+          "entries_selected": 5,
+          "entries_total": 6,
+          "selected_precision": 0.6,
+          "gold_uncontested": false,
+          "relevance_source": "memories-index:2 hits",
+          "status": "PASS",
+          "is_primary": true,
+          "advisories": []
+        }
+      ],
+      "status": "PASS",
+      "fail_reasons": [],
+      "warn_reasons": [],
+      "per_mode_status": {
+        "static": "PASS",
+        "lexical": "PASS"
+      }
+    },
+    {
+      "id": "trading-definitions-first",
+      "category": "trading-safety",
+      "query": "before building the liquidity inducement detector, what definitions do we need and can it trade live",
+      "budget_tokens": 155,
+      "original_tokens": 205,
+      "optional_capacity": 125,
+      "min_budget_for_required": 99,
+      "budget_can_hold_required": true,
+      "primary_mode": "lexical",
+      "fixture_valid": true,
+      "control_required_recall": 1.0,
+      "missing_in_control": [],
+      "pins": [
+        {
+          "label": "no-live-execution-pin",
+          "store": "memory",
+          "expected": "safety",
+          "actual": "safety",
+          "survived_budget_zero": true
+        }
+      ],
+      "dropped_pins": [],
+      "misclassified_pins": [],
+      "modes": [
+        {
+          "mode": "static",
+          "budget_tokens": 155,
+          "original_tokens": 205,
+          "projected_tokens": 151,
+          "savings_pct": 26.3,
+          "required_total": 2,
+          "required_recall": 0.5,
+          "required_recall_pct": 50.0,
+          "missing_required": [
+            "definition-dictionary-path"
+          ],
+          "missing_droppable": [
+            "definition-dictionary-path"
+          ],
+          "missing_unfittable": [],
+          "entries_selected": 6,
+          "entries_total": 8,
+          "selected_precision": 0.2,
+          "gold_uncontested": false,
+          "relevance_source": "disabled:no-query",
+          "status": "WARN",
+          "is_primary": false,
+          "advisories": []
+        },
+        {
+          "mode": "lexical",
+          "budget_tokens": 155,
+          "original_tokens": 205,
+          "projected_tokens": 151,
+          "savings_pct": 26.3,
+          "required_total": 2,
+          "required_recall": 0.5,
+          "required_recall_pct": 50.0,
+          "missing_required": [
+            "definition-dictionary-path"
+          ],
+          "missing_droppable": [
+            "definition-dictionary-path"
+          ],
+          "missing_unfittable": [],
+          "entries_selected": 6,
+          "entries_total": 8,
+          "selected_precision": 0.2,
+          "gold_uncontested": false,
+          "relevance_source": "memories-index:4 hits",
+          "status": "WARN",
+          "is_primary": true,
+          "advisories": []
+        }
+      ],
+      "status": "WARN",
+      "fail_reasons": [],
+      "warn_reasons": [
+        "[lexical] required recall 50.0%; dropped (could fit): ['definition-dictionary-path']"
+      ],
+      "per_mode_status": {
+        "static": "WARN",
+        "lexical": "WARN"
+      }
+    },
+    {
+      "id": "design-phone-demo-verification",
+      "category": "design-delivery",
+      "query": "finish the landing page demo for a client pitch on my phone and prove it works",
+      "budget_tokens": 150,
+      "original_tokens": 201,
+      "optional_capacity": 117,
+      "min_budget_for_required": 100,
+      "budget_can_hold_required": true,
+      "primary_mode": "lexical",
+      "fixture_valid": true,
+      "control_required_recall": 1.0,
+      "missing_in_control": [],
+      "pins": [
+        {
+          "label": "design-resource-index-pin",
+          "store": "memory",
+          "expected": "operational",
+          "actual": "operational",
+          "survived_budget_zero": true
+        }
+      ],
+      "dropped_pins": [],
+      "misclassified_pins": [],
+      "modes": [
+        {
+          "mode": "static",
+          "budget_tokens": 150,
+          "original_tokens": 201,
+          "projected_tokens": 140,
+          "savings_pct": 30.3,
+          "required_total": 2,
+          "required_recall": 0.5,
+          "required_recall_pct": 50.0,
+          "missing_required": [
+            "frontend-e2e-verification"
+          ],
+          "missing_droppable": [
+            "frontend-e2e-verification"
+          ],
+          "missing_unfittable": [],
+          "entries_selected": 6,
+          "entries_total": 8,
+          "selected_precision": 0.2,
+          "gold_uncontested": false,
+          "relevance_source": "disabled:no-query",
+          "status": "WARN",
+          "is_primary": false,
+          "advisories": []
+        },
+        {
+          "mode": "lexical",
+          "budget_tokens": 150,
+          "original_tokens": 201,
+          "projected_tokens": 140,
+          "savings_pct": 30.3,
+          "required_total": 2,
+          "required_recall": 0.5,
+          "required_recall_pct": 50.0,
+          "missing_required": [
+            "frontend-e2e-verification"
+          ],
+          "missing_droppable": [
+            "frontend-e2e-verification"
+          ],
+          "missing_unfittable": [],
+          "entries_selected": 6,
+          "entries_total": 8,
+          "selected_precision": 0.2,
+          "gold_uncontested": false,
+          "relevance_source": "memories-index:1 hits",
+          "status": "WARN",
+          "is_primary": true,
+          "advisories": []
+        }
+      ],
+      "status": "WARN",
+      "fail_reasons": [],
+      "warn_reasons": [
+        "[lexical] required recall 50.0%; dropped (could fit): ['frontend-e2e-verification']"
+      ],
+      "per_mode_status": {
+        "static": "WARN",
+        "lexical": "WARN"
+      }
+    },
+    {
+      "id": "credential-screenshot-safety",
+      "category": "safety-credential-handling",
+      "query": "a setup screen asks for an API key password in a permission dialog, should you type it or click through",
+      "budget_tokens": 150,
+      "original_tokens": 193,
+      "optional_capacity": 13,
+      "min_budget_for_required": 137,
+      "budget_can_hold_required": true,
+      "primary_mode": "lexical",
+      "fixture_valid": true,
+      "control_required_recall": 1.0,
+      "missing_in_control": [],
+      "pins": [
+        {
+          "label": "permission-dialog-pin",
+          "store": "memory",
+          "expected": "safety",
+          "actual": "safety",
+          "survived_budget_zero": true
+        },
+        {
+          "label": "never-type-secrets-pin",
+          "store": "memory",
+          "expected": "safety",
+          "actual": "safety",
+          "survived_budget_zero": true
+        },
+        {
+          "label": "ui-prompt-injection-rule",
+          "store": "memory",
+          "expected": "safety",
+          "actual": "safety",
+          "survived_budget_zero": true
+        }
+      ],
+      "dropped_pins": [],
+      "misclassified_pins": [],
+      "modes": [
+        {
+          "mode": "static",
+          "budget_tokens": 150,
+          "original_tokens": 193,
+          "projected_tokens": 142,
+          "savings_pct": 26.4,
+          "required_total": 1,
+          "required_recall": 1.0,
+          "required_recall_pct": 100.0,
+          "missing_required": [],
+          "missing_droppable": [],
+          "missing_unfittable": [],
+          "entries_selected": 5,
+          "entries_total": 8,
+          "selected_precision": 0.0,
+          "gold_uncontested": false,
+          "relevance_source": "disabled:no-query",
+          "status": "PASS",
+          "is_primary": false,
+          "advisories": []
+        },
+        {
+          "mode": "lexical",
+          "budget_tokens": 150,
+          "original_tokens": 193,
+          "projected_tokens": 142,
+          "savings_pct": 26.4,
+          "required_total": 1,
+          "required_recall": 1.0,
+          "required_recall_pct": 100.0,
+          "missing_required": [],
+          "missing_droppable": [],
+          "missing_unfittable": [],
+          "entries_selected": 5,
+          "entries_total": 8,
+          "selected_precision": 0.0,
+          "gold_uncontested": false,
+          "relevance_source": "memories-index:3 hits",
+          "status": "PASS",
+          "is_primary": true,
+          "advisories": []
+        }
+      ],
+      "status": "PASS",
+      "fail_reasons": [],
+      "warn_reasons": [],
+      "per_mode_status": {
+        "static": "PASS",
+        "lexical": "PASS"
+      }
+    },
+    {
+      "id": "stale-memory-conflict-resolution",
+      "category": "memory-operations",
+      "query": "memory says two different defaults for Hermes routing, how do we resolve the stale conflict",
+      "budget_tokens": 160,
+      "original_tokens": 161,
+      "optional_capacity": 160,
+      "min_budget_for_required": 115,
+      "budget_can_hold_required": true,
+      "primary_mode": "lexical",
+      "fixture_valid": true,
+      "control_required_recall": 1.0,
+      "missing_in_control": [],
+      "pins": [],
+      "dropped_pins": [],
+      "misclassified_pins": [],
+      "modes": [
+        {
+          "mode": "static",
+          "budget_tokens": 160,
+          "original_tokens": 161,
+          "projected_tokens": 146,
+          "savings_pct": 9.3,
+          "required_total": 3,
+          "required_recall": 1.0,
+          "required_recall_pct": 100.0,
+          "missing_required": [],
+          "missing_droppable": [],
+          "missing_unfittable": [],
+          "entries_selected": 5,
+          "entries_total": 6,
+          "selected_precision": 0.6,
+          "gold_uncontested": false,
+          "relevance_source": "disabled:no-query",
+          "status": "PASS",
+          "is_primary": false,
+          "advisories": []
+        },
+        {
+          "mode": "lexical",
+          "budget_tokens": 160,
+          "original_tokens": 161,
+          "projected_tokens": 146,
+          "savings_pct": 9.3,
+          "required_total": 3,
+          "required_recall": 1.0,
+          "required_recall_pct": 100.0,
+          "missing_required": [],
+          "missing_droppable": [],
+          "missing_unfittable": [],
+          "entries_selected": 5,
+          "entries_total": 6,
+          "selected_precision": 0.6,
+          "gold_uncontested": false,
+          "relevance_source": "memories-index:1 hits",
+          "status": "PASS",
+          "is_primary": true,
+          "advisories": []
+        }
+      ],
+      "status": "PASS",
+      "fail_reasons": [],
+      "warn_reasons": [],
+      "per_mode_status": {
+        "static": "PASS",
+        "lexical": "PASS"
+      }
+    },
+    {
+      "id": "external-install-test-bar",
+      "category": "exportability",
+      "query": "what is the user-test bar before calling this package ready for public use",
+      "budget_tokens": 150,
+      "original_tokens": 185,
+      "optional_capacity": 105,
+      "min_budget_for_required": 109,
+      "budget_can_hold_required": true,
+      "primary_mode": "lexical",
+      "fixture_valid": true,
+      "control_required_recall": 1.0,
+      "missing_in_control": [],
+      "pins": [
+        {
+          "label": "installer-no-destructive-pin",
+          "store": "memory",
+          "expected": "safety",
+          "actual": "safety",
+          "survived_budget_zero": true
+        }
+      ],
+      "dropped_pins": [],
+      "misclassified_pins": [],
+      "modes": [
+        {
+          "mode": "static",
+          "budget_tokens": 150,
+          "original_tokens": 185,
+          "projected_tokens": 143,
+          "savings_pct": 22.7,
+          "required_total": 2,
+          "required_recall": 1.0,
+          "required_recall_pct": 100.0,
+          "missing_required": [],
+          "missing_droppable": [],
+          "missing_unfittable": [],
+          "entries_selected": 6,
+          "entries_total": 8,
+          "selected_precision": 0.4,
+          "gold_uncontested": false,
+          "relevance_source": "disabled:no-query",
+          "status": "PASS",
+          "is_primary": false,
+          "advisories": []
+        },
+        {
+          "mode": "lexical",
+          "budget_tokens": 150,
+          "original_tokens": 185,
+          "projected_tokens": 143,
+          "savings_pct": 22.7,
+          "required_total": 2,
+          "required_recall": 1.0,
+          "required_recall_pct": 100.0,
+          "missing_required": [],
+          "missing_droppable": [],
+          "missing_unfittable": [],
+          "entries_selected": 6,
+          "entries_total": 8,
+          "selected_precision": 0.4,
+          "gold_uncontested": false,
+          "relevance_source": "memories-index:2 hits",
+          "status": "PASS",
+          "is_primary": true,
+          "advisories": []
+        }
+      ],
+      "status": "PASS",
+      "fail_reasons": [],
+      "warn_reasons": [],
+      "per_mode_status": {
+        "static": "PASS",
+        "lexical": "PASS"
+      }
+    },
+    {
+      "id": "projection-shadow-mode-rollout",
+      "category": "memory-projection-rollout",
+      "query": "how should we roll out memory projection into Hermes without breaking live answers",
+      "budget_tokens": 155,
+      "original_tokens": 185,
+      "optional_capacity": 128,
+      "min_budget_for_required": 104,
+      "budget_can_hold_required": true,
+      "primary_mode": "lexical",
+      "fixture_valid": true,
+      "control_required_recall": 1.0,
+      "missing_in_control": [],
+      "pins": [
+        {
+          "label": "safety-pins-never-gated",
+          "store": "memory",
+          "expected": "safety",
+          "actual": "safety",
+          "survived_budget_zero": true
+        }
+      ],
+      "dropped_pins": [],
+      "misclassified_pins": [],
+      "modes": [
+        {
+          "mode": "static",
+          "budget_tokens": 155,
+          "original_tokens": 185,
+          "projected_tokens": 146,
+          "savings_pct": 21.1,
+          "required_total": 2,
+          "required_recall": 1.0,
+          "required_recall_pct": 100.0,
+          "missing_required": [],
+          "missing_droppable": [],
+          "missing_unfittable": [],
+          "entries_selected": 6,
+          "entries_total": 7,
+          "selected_precision": 0.4,
+          "gold_uncontested": false,
+          "relevance_source": "disabled:no-query",
+          "status": "PASS",
+          "is_primary": false,
+          "advisories": []
+        },
+        {
+          "mode": "lexical",
+          "budget_tokens": 155,
+          "original_tokens": 185,
+          "projected_tokens": 146,
+          "savings_pct": 21.1,
+          "required_total": 2,
+          "required_recall": 1.0,
+          "required_recall_pct": 100.0,
+          "missing_required": [],
+          "missing_droppable": [],
+          "missing_unfittable": [],
+          "entries_selected": 6,
+          "entries_total": 7,
+          "selected_precision": 0.4,
+          "gold_uncontested": false,
+          "relevance_source": "memories-index:4 hits",
+          "status": "PASS",
+          "is_primary": true,
+          "advisories": []
+        }
+      ],
+      "status": "PASS",
+      "fail_reasons": [],
+      "warn_reasons": [],
+      "per_mode_status": {
+        "static": "PASS",
         "lexical": "PASS"
       }
     }
