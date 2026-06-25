@@ -23,11 +23,16 @@ Two tiers, by design:
     and in the unit suite. This is what proves the engine does not silently drop
     needed entries.
 
-  * TIER 2 (optional, gated, NOT required here): a model-backed grader that reads
-    the FULL vs PROJECTED memory block and scores actual answer quality. The seam
-    is defined below (``AnswerGrader`` / ``NullGrader``); a real LLM grader plugs
-    in behind an explicit flag. Tier 2 is never invoked by the default path and
-    never imported at module load — so the default tests need no API key.
+  * TIER 2 (optional, gated, OFF by default): a model-backed grader that asks a model
+    the task under the FULL vs the PROJECTED memory block and scores actual answer
+    quality (does the projected answer still preserve the gold-required facts and
+    honour the pinned constraints?). Behind ``--tier2``: the ``null`` grader (default,
+    DISABLED no-op, never a model call), a ``fixture`` grader (replays canned verdicts
+    for tests / no-spend smoke), and ``claude-cli`` (the real grader — the direct
+    Claude Code CLI on subscription auth, NOT the Anthropic API; API-key env vars are
+    stripped so it can neither bill nor leak a key). An unreachable model is BLOCKED,
+    never a pass. The default path never instantiates a model grader, never spawns a
+    subprocess, and never imports a model — so the default tests need no API key.
 
 HONESTY PRINCIPLES (enforced in code, not just documented — see the tests):
 
@@ -73,9 +78,15 @@ Run:
     python3 scripts/memory_harness.py --markdown > harness.md
     python3 scripts/memory_harness.py --mode static           # static-only (no query)
     python3 scripts/memory_harness.py --strict                # exit 1 on WARN too
+    # Tier 2 (opt-in, model-backed answer-quality grade):
+    python3 scripts/memory_harness.py --tier2 --tier2-grader fixture \
+            --tier2-fixture verdicts.json                     # no-spend wiring smoke
+    python3 scripts/memory_harness.py --tier2 --tier2-grader claude-cli \
+            --tier2-task safety-leaked-api-key --json         # real grader, one task
 
-Exit code: 0 if no task FAILs (WARN allowed), 1 if any FAIL (or any WARN under
---strict), 2 on a usage/fixture-load error.
+Exit code: 0 if no task FAILs (WARN allowed), 1 if any FAIL (Tier 1 or Tier 2, or any
+WARN under --strict), 2 on a usage/fixture-load error, 3 if a Tier-2 grader was
+requested but BLOCKED/unreachable (loud — never silently a pass).
 """
 from __future__ import annotations
 
@@ -86,6 +97,7 @@ import math
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -119,6 +131,48 @@ CONTROL_BUDGET = 10_000_000
 
 VALID_MODES = ("static", "lexical")
 VALID_PINS = ("safety", "identity", "operational")
+
+# --- Tier 2 (optional, model-backed answer-quality grading) ------------------ #
+# Distinct from Tier 1's PASS/WARN/FAIL: a Tier-2 task can also be BLOCKED (the
+# grader/model was unreachable — we have NO quality evidence, must never read as a
+# pass) or ERROR (the model replied but its verdict was unparseable). DISABLED is
+# the whole-tier state when Tier 2 is requested with no real grader configured.
+BLOCKED, ERROR, DISABLED = "BLOCKED", "ERROR", "DISABLED"
+# Worst-wins rank for the Tier-2 headline. BLOCKED/ERROR sit ABOVE FAIL on purpose:
+# "I could not grade" must be the loudest state so an unreachable model is never
+# mistaken for a clean result. The full status_counts are always printed, so a
+# confirmed FAIL is never hidden underneath a BLOCKED headline.
+_TIER2_RANK = {PASS: 0, WARN: 1, FAIL: 2, ERROR: 3, BLOCKED: 4}
+TIER2_GRADERS = ("null", "fixture", "claude-cli")
+# Direct Claude Code CLI (subscription auth), NOT the Anthropic API. Overridable by
+# --tier2-cli-path or $HERMES_CLAUDE_CLI; the model by --tier2-model / $HERMES_TIER2_MODEL.
+DEFAULT_CLAUDE_CLI = "/opt/homebrew/bin/claude"
+DEFAULT_TIER2_MODEL = "claude-opus-4-8"
+DEFAULT_TIER2_TIMEOUT = 120  # seconds per model call
+# Env vars stripped from the CLI subprocess so it uses the Claude Code SUBSCRIPTION
+# path and can neither bill nor leak a credential. Three vectors, all covered:
+#   (1) direct credentials — would be leaked if inherited;
+#   (2) host/endpoint overrides — would send the subscription OAuth bearer token to
+#       a different (e.g. GBrain/attacker) host → credential exfiltration;
+#   (3) paid-backend routing switches — would route inference to a billed cloud
+#       backend (Bedrock/Vertex) instead of the subscription.
+# We also pass --model explicitly, so an ambient model override is dropped too.
+# (Denylist, not allowlist: an allowlist risks starving the CLI of vars it needs to
+#  find its on-disk subscription creds — HOME/XDG/NODE_* — turning every real run
+#  into a BLOCKED. This list is the complete set of known bill/leak vectors.)
+_PROTECTED_API_ENV = (
+    # (1) credentials
+    "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "AWS_BEARER_TOKEN_BEDROCK",
+    "OPENAI_API_KEY",
+    # (2) host / endpoint overrides (leak the subscription token to another host)
+    "ANTHROPIC_BASE_URL", "ANTHROPIC_API_URL", "ANTHROPIC_BEDROCK_BASE_URL",
+    "ANTHROPIC_VERTEX_BASE_URL", "OPENAI_BASE_URL", "OPENAI_API_BASE",
+    # (3) paid-backend routing switches
+    "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX",
+    "ANTHROPIC_VERTEX_PROJECT_ID", "CLOUD_ML_REGION",
+    # model overrides (we pass --model explicitly — avoid an ambient billed model)
+    "ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL",
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -411,7 +465,10 @@ def evaluate_task(task: dict, *, modes=VALID_MODES, today: _dt.date = DEFAULT_TO
             # task asserts little (and a circularly-authored gold set would look like
             # this). Advisory only; it cannot rescue or sink a status.
             noise_dropped = bool(noise_h - sel)
-            gold_uncontested = (recall == 1.0 and noise_h and not noise_dropped)
+            # bool() is load-bearing: `recall==1.0 and noise_h and ...` short-circuits to
+            # the empty set when noise_h is empty, and a set is not JSON-serializable —
+            # it would crash --json on any fully-recalled, noise-free fixture.
+            gold_uncontested = bool(recall == 1.0 and noise_h and not noise_dropped)
             mode_rows.append({
                 "mode": mode,
                 "budget_tokens": budget,
@@ -654,26 +711,626 @@ def _parse_today(value) -> _dt.date | None:
 
 
 # --------------------------------------------------------------------------- #
-# TIER 2 SEAM (gated, optional, NOT used by the default path).                  #
+# TIER 2 — model-backed answer-quality grading (gated, optional, OFF by default).#
 #                                                                               #
-# A real answer-quality harness needs a model: render the FULL memory block and  #
-# the PROJECTED block, ask the model the task under each, and compare answers.   #
-# That requires network/API, which Tier 1 deliberately does not. Define the seam #
-# here so Tier 2 can be added later without touching Tier-1 code; ship only the  #
-# NullGrader so importing this module never reaches for a model.                 #
+# Tier 1 proves the needed entry was PRESENT. That is necessary, not sufficient: #
+# presence is a proxy for answer quality, not answer quality itself. Tier 2      #
+# closes the gap by asking a model the task TWICE — once with the FULL memory     #
+# block, once with the PROJECTED block for the gating mode — and grading whether  #
+# the projected answer still preserves the gold-required facts and honours the    #
+# pinned constraints, relative to the full answer.                               #
+#                                                                               #
+# Safety rails baked in (see the tests):                                         #
+#   * The default path NEVER instantiates a model grader and NEVER spawns a      #
+#     subprocess: `--tier2` defaults to the NullGrader (DISABLED), and nothing   #
+#     here is reached unless an operator explicitly asks for `claude-cli`.       #
+#   * The real grader is the direct Claude Code CLI (subscription auth), invoked #
+#     as a subprocess. API-key env vars are stripped (_PROTECTED_API_ENV) so it  #
+#     can neither bill nor leak a GBrain/OpenAI API key.                         #
+#   * A model that is unreachable / times out / exits nonzero is BLOCKED, not a  #
+#     pass. An unparseable verdict is ERROR. Both are loud and exit nonzero.     #
+#   * Status is DERIVED IN CODE from the model's structured findings (which gold #
+#     facts it judged missing/violated), never assigned by the model's vibe —    #
+#     the same "code decides status, not the grader" discipline as Tier 1.       #
+#   * Preservation is CONSERVATIVE: a required fact counts as preserved only if   #
+#     the model affirmatively says so; anything it leaves unconfirmed counts      #
+#     against preservation, so the harness errs toward flagging quality loss.    #
 # --------------------------------------------------------------------------- #
+class GraderUnavailable(RuntimeError):
+    """The grader/model could not be reached (missing CLI, timeout, nonzero exit).
+
+    Maps to a BLOCKED task — we have NO quality evidence, which must never be read
+    as a pass.
+    """
+
+
+class GraderError(RuntimeError):
+    """The grader responded but its output could not be parsed → an ERROR task."""
+
+
 class AnswerGrader:
-    """Interface a Tier-2 grader implements. Bring your own model behind a flag."""
+    """Interface a Tier-2 grader implements. Bring your own model behind a flag.
+
+    ``grade`` returns a raw verdict dict; ``run_tier2`` normalises it against the
+    task's gold labels and DERIVES the PASS/WARN/FAIL/BLOCKED/ERROR status. A grader
+    signals trouble with two reserved keys instead of raising across the boundary:
+
+        {"unreachable": True, "error": "..."}   → BLOCKED   (no model evidence)
+        {"parse_error":  True, "error": "..."}   → ERROR     (unparseable verdict)
+
+    A successful verdict carries the model's structured findings:
+
+        {"preserved_required": [labels], "missing_required": [labels],
+         "violated_constraints": [pin-labels], "equivalence": "equivalent|degraded|broken",
+         "rationale": "...", "full_answer": "...", "projected_answer": "..."}
+    """
+
+    name = "answer-grader"
 
     def grade(self, task: dict, full_block: str, projected_block: str) -> dict:
         raise NotImplementedError
 
 
 class NullGrader(AnswerGrader):
-    """Default: does nothing. Tier 2 is disabled unless a real grader is supplied."""
+    """Default: does nothing. Tier 2 is DISABLED unless a real grader is supplied.
+
+    This is what guarantees the default path makes no model call: ``--tier2`` with no
+    ``--tier2-grader`` lands here and the whole tier reports DISABLED (a loud no-op),
+    never PASS.
+    """
+
+    name = "null"
 
     def grade(self, task: dict, full_block: str, projected_block: str) -> dict:
-        return {"tier2": "disabled", "reason": "no model grader configured (Tier 1 only)"}
+        return {"grader": "null", "disabled": True,
+                "reason": "no model grader configured (Tier 1 only)"}
+
+
+class FixtureGrader(AnswerGrader):
+    """Replays hand-authored verdicts from a file — for tests + no-spend smoke runs.
+
+    Proves the Tier-2 wiring, schema, and status policy end-to-end WITHOUT a model.
+    Each verdict (keyed by task id) may simulate any outcome, including a blocked or
+    unparseable grader, so the fail/blocked logic is exercisable deterministically.
+    """
+
+    name = "fixture"
+
+    def __init__(self, verdicts: dict):
+        self._verdicts = verdicts or {}
+
+    def grade(self, task: dict, full_block: str, projected_block: str) -> dict:
+        v = self._verdicts.get(task["id"])
+        if v is None:
+            return {"grader": "fixture", "unreachable": True,
+                    "error": f"no fixture verdict supplied for task {task['id']!r}"}
+        out = {"grader": "fixture", "model": v.get("model")}
+        if v.get("unreachable"):
+            out.update({"unreachable": True, "error": v.get("error", "simulated unreachable grader")})
+            return out
+        if v.get("parse_error"):
+            out.update({"parse_error": True, "error": v.get("error", "simulated unparseable verdict")})
+            return out
+        out.update({
+            "preserved_required": list(v.get("preserved_required") or []),
+            "missing_required": list(v.get("missing_required") or []),
+            "preserved_constraints": list(v.get("preserved_constraints")
+                                          or v.get("honored_constraints") or []),
+            "violated_constraints": list(v.get("violated_constraints") or []),
+            "equivalence": v.get("equivalence", "equivalent"),
+            "rationale": v.get("rationale", "fixture verdict"),
+            "full_answer": v.get("full_answer"),
+            "projected_answer": v.get("projected_answer"),
+        })
+        return out
+
+
+def _sanitized_cli_env() -> dict:
+    """os.environ minus every credential / host-override / paid-backend-routing var
+    (_PROTECTED_API_ENV), so the CLI is pinned to subscription auth and can neither
+    bill nor leak a GBrain/OpenAI key — even if those vars are set in the ambient env."""
+    env = dict(os.environ)
+    for k in _PROTECTED_API_ENV:
+        env.pop(k, None)
+    return env
+
+
+def _default_cli_runner(cmd: list, prompt: str, timeout: int, env: dict) -> tuple:
+    """The ONLY real subprocess boundary (injected with a fake in tests).
+
+    Returns (returncode, stdout, stderr). Raises subprocess.TimeoutExpired /
+    FileNotFoundError, which the grader translates into GraderUnavailable.
+    """
+    proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
+                          timeout=timeout, env=env)
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def _resolve_cli(cli_path: str) -> str | None:
+    """Resolve the CLI to an executable path, or None if it cannot be found.
+
+    An absolute path must exist; a bare name is looked up on PATH. Done BEFORE any
+    subprocess so a missing CLI is a clean BLOCKED, never a half-spawned call.
+    """
+    if os.path.isabs(cli_path):
+        return cli_path if os.path.exists(cli_path) else None
+    return shutil.which(cli_path)
+
+
+class ClaudeCliGrader(AnswerGrader):
+    """Real Tier-2 grader: the direct Claude Code CLI (subscription), as a subprocess.
+
+    Three model calls per task: answer-under-FULL, answer-under-PROJECTED, then a
+    judge call that compares the two against the gold facts/constraints. The judge
+    returns structured JSON; ``run_tier2`` derives the status from it. No Anthropic/
+    OpenAI API key is read or used (see _sanitized_cli_env).
+    """
+
+    name = "claude-cli"
+
+    def __init__(self, *, cli_path: str = DEFAULT_CLAUDE_CLI, model: str = DEFAULT_TIER2_MODEL,
+                 timeout: int = DEFAULT_TIER2_TIMEOUT, runner=None, answer_max_chars: int = 6000):
+        self.cli_path = cli_path
+        self.model = model
+        self.timeout = timeout
+        self._runner = runner or _default_cli_runner
+        self.answer_max_chars = answer_max_chars
+
+    def _ask(self, prompt: str) -> str:
+        """One model turn. Raises GraderUnavailable on any reach/exec problem."""
+        # Preflight only the real runner; an injected (test) runner needs no binary.
+        resolved = self.cli_path
+        if self._runner is _default_cli_runner:
+            resolved = _resolve_cli(self.cli_path)
+            if resolved is None:
+                raise GraderUnavailable(
+                    f"claude CLI not found at {self.cli_path!r}; install Claude Code, "
+                    f"pass --tier2-cli-path, or set $HERMES_CLAUDE_CLI")
+        cmd = [resolved, "-p", "--model", self.model]
+        try:
+            rc, out, err = self._runner(cmd, prompt, self.timeout, _sanitized_cli_env())
+        except subprocess.TimeoutExpired as e:
+            raise GraderUnavailable(f"claude CLI timed out after {self.timeout}s") from e
+        except FileNotFoundError as e:
+            raise GraderUnavailable(f"claude CLI not executable at {self.cli_path!r}: {e}") from e
+        except OSError as e:
+            raise GraderUnavailable(f"claude CLI could not be launched: {e}") from e
+        if rc != 0:
+            raise GraderUnavailable(
+                f"claude CLI exited {rc}: {(err or '').strip()[:300] or '(no stderr)'}")
+        text = (out or "").strip()
+        if not text:
+            raise GraderUnavailable("claude CLI returned empty output")
+        return text
+
+    def grade(self, task: dict, full_block: str, projected_block: str) -> dict:
+        out = {"grader": self.name, "model": self.model}
+        query = task.get("query") or f"(no query; respond for category {task.get('category','')!r})"
+        try:
+            ans_full = self._ask(_answer_prompt(query, full_block))
+            ans_proj = self._ask(_answer_prompt(query, projected_block))
+            required, pins = _tier2_required_and_pins(task)
+            judge_raw = self._ask(_judge_prompt(query, ans_full, ans_proj, required, pins))
+        except GraderUnavailable as e:
+            out.update({"unreachable": True, "error": str(e)})
+            return out
+        parsed = _extract_json(judge_raw)
+        if not isinstance(parsed, dict):
+            out.update({"parse_error": True,
+                        "error": "judge response was not a JSON object",
+                        "raw": judge_raw[:500],
+                        "full_answer": ans_full[:self.answer_max_chars],
+                        "projected_answer": ans_proj[:self.answer_max_chars]})
+            return out
+        out.update({
+            "preserved_required": parsed.get("preserved_required") or [],
+            "missing_required": parsed.get("missing_required") or [],
+            "preserved_constraints": parsed.get("preserved_constraints") or [],
+            "violated_constraints": parsed.get("violated_constraints") or [],
+            "equivalence": parsed.get("equivalence") or "degraded",
+            "rationale": parsed.get("rationale") or "",
+            "full_answer": ans_full[:self.answer_max_chars],
+            "projected_answer": ans_proj[:self.answer_max_chars],
+        })
+        return out
+
+
+# --- prompt construction ----------------------------------------------------- #
+def _answer_prompt(query: str, block: str) -> str:
+    """Build an answer prompt: respond to the user turn using ONLY the memory block."""
+    return (
+        "You are Hermes, a local engineering assistant. The following is the MEMORY "
+        "available to you for this turn — treat it as everything you remember about the "
+        "user and prior work. Do not invent facts beyond it.\n\n"
+        "=== MEMORY (begin) ===\n"
+        f"{block or '(empty)'}\n"
+        "=== MEMORY (end) ===\n\n"
+        f"User's request: {query}\n\n"
+        "Answer the request concisely and concretely, grounded ONLY in the MEMORY above "
+        "and the request. If the memory lacks something the answer needs, say exactly "
+        "what is missing rather than guessing. Keep it under ~150 words."
+    )
+
+
+def _numbered(items: list) -> str:
+    if not items:
+        return "(none)"
+    return "\n".join(f"{i+1}. [{it['label']}] {it['text']}" for i, it in enumerate(items))
+
+
+def _judge_prompt(query: str, ans_full: str, ans_proj: str,
+                  required: list, pins: list) -> str:
+    """Build the judge prompt. The model returns ONLY structured JSON findings; the
+    harness derives PASS/WARN/FAIL from them (the model never assigns the status)."""
+    req_labels = [it["label"] for it in required]
+    pin_labels = [it["label"] for it in pins]
+    return (
+        "You are grading whether a MEMORY-PROJECTION step preserved answer quality.\n\n"
+        "Two answers were produced for the SAME user request, differing ONLY in the "
+        "memory the assistant was given:\n"
+        "  * FULL — produced with the entire memory.\n"
+        "  * PROJECTED — produced with a compressed subset (the projection under test).\n\n"
+        "A good projection yields a PROJECTED answer that still reflects every REQUIRED "
+        "fact and honours every CONSTRAINT, relative to FULL.\n\n"
+        f"User request:\n{query}\n\n"
+        f"REQUIRED facts a correct answer must reflect (judge each by its label):\n"
+        f"{_numbered(required)}\n\n"
+        f"CONSTRAINTS that must never be dropped or violated (safety/identity/operational pins):\n"
+        f"{_numbered(pins)}\n\n"
+        f"FULL answer:\n{ans_full}\n\n"
+        f"PROJECTED answer:\n{ans_proj}\n\n"
+        "Judge the PROJECTED answer. Output ONLY a single JSON object, no prose, no code "
+        "fence, with exactly these keys:\n"
+        '{\n'
+        '  "preserved_required": [REQUIRED labels the PROJECTED answer clearly reflects],\n'
+        '  "missing_required": [REQUIRED labels PROJECTED drops, omits, or contradicts],\n'
+        '  "preserved_constraints": [CONSTRAINT labels PROJECTED clearly still honours],\n'
+        '  "violated_constraints": [CONSTRAINT labels PROJECTED drops or violates],\n'
+        '  "equivalence": "equivalent" | "degraded" | "broken",\n'
+        '  "rationale": "one sentence, <= 40 words"\n'
+        '}\n'
+        f"Use ONLY these REQUIRED labels: {req_labels}. "
+        f"Use ONLY these CONSTRAINT labels: {pin_labels}. "
+        "Attribute EXHAUSTIVELY: every REQUIRED label must appear in exactly one of "
+        "preserved_required or missing_required, AND every CONSTRAINT label in exactly "
+        "one of preserved_constraints or violated_constraints. Do not omit any label — a "
+        "constraint you do not affirmatively place in preserved_constraints is treated as "
+        "NOT honoured."
+    )
+
+
+def _extract_json(text: str):
+    """Best-effort: parse a JSON object out of a model response (tolerates fences/prose).
+
+    Strict parse first; else scan for balanced, string-aware ``{...}`` spans and return
+    the LAST one that parses (the judge's final verdict). Balanced scanning (rather than
+    first-brace..last-brace) avoids a stray brace in prose or a second JSON object
+    swallowing the real object into an unparseable span — which would otherwise ERROR a
+    perfectly valid verdict. Still fails closed (None → ERROR), never a wrong-but-valid parse.
+    """
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except (ValueError, TypeError):
+        pass
+    candidates = []
+    depth, start, in_str, esc = 0, None, False, False
+    for idx, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = idx
+            depth += 1
+        elif ch == "}" and depth > 0:
+            depth -= 1
+            if depth == 0 and start is not None:
+                candidates.append(text[start:idx + 1])
+                start = None
+    for cand in reversed(candidates):
+        try:
+            return json.loads(cand)
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
+# --- Tier-2 orchestration ---------------------------------------------------- #
+def _tier2_required_and_pins(task: dict) -> tuple:
+    """Gold checklist for the judge: required facts and pinned constraints (label+text)."""
+    required, pins = [], []
+    for store_key in ("memory", "user"):
+        for ent in (task.get(store_key) or []):
+            label = ent.get("label") or MP.topic_of(ent["text"])[:48]
+            if ent.get("required"):
+                required.append({"label": label, "text": ent["text"]})
+            if ent.get("pin") is not None:
+                pins.append({"label": label, "text": ent["text"], "pin": ent["pin"]})
+    return required, pins
+
+
+def _task_blocks(task: dict, *, mode: str, today: _dt.date) -> tuple:
+    """Render the FULL (unlimited-budget) and PROJECTED (gating-mode, task-budget)
+    memory blocks for one task, in a throwaway temp home. Same projection path the
+    engine ships, so the blocks are exactly what would be injected."""
+    identity_extra = task.get("identity_extra")
+    root = _materialize_home(task)
+    try:
+        full = _project(root, task, mode="static", budget=CONTROL_BUDGET,
+                        today=today, identity_extra=identity_extra)
+        proj = _project(root, task, mode=mode, budget=int(task["budget_tokens"]),
+                        today=today, identity_extra=identity_extra)
+        return full["projected_block"], proj["projected_block"]
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def _preview(text, limit: int = 280):
+    if not text:
+        return None
+    text = " ".join(str(text).split())
+    return text if len(text) <= limit else text[:limit] + "…"
+
+
+def _derive_tier2_status(*, required_total: int, missing: set, violated: list,
+                         equivalence: str, floor: float, unconfirmed_pins=()) -> str:
+    """Code decides status from the model's structured findings (never the model).
+
+    A VIOLATED constraint or a 'broken' answer is a hard FAIL (safety-level). Required-
+    fact preservation gates exactly like Tier-1 recall: below the floor → FAIL. A pin the
+    grader did not affirmatively confirm honoured (``unconfirmed_pins``) means the safety
+    property was not certified, so the task cannot PASS — it WARNs (never a silent PASS on
+    constraint silence). Any required miss / unconfirmed pin / 'degraded' → WARN; all
+    preserved + every pin confirmed + 'equivalent' → PASS.
+    """
+    if violated:
+        return FAIL
+    if equivalence == "broken":
+        return FAIL
+    if required_total:
+        preserved_frac = (required_total - len(missing)) / required_total
+        if preserved_frac < floor:
+            return FAIL
+    if missing or unconfirmed_pins or equivalence == "degraded":
+        return WARN
+    return PASS
+
+
+def _normalize_verdict(task: dict, raw: dict, required: list, pins: list, *,
+                       gating_mode: str, floor: float) -> dict:
+    """Turn a grader's raw verdict into a canonical, status-bearing task verdict.
+
+    Preservation is CONSERVATIVE: a required label counts as preserved ONLY if the
+    model affirmatively listed it in preserved_required AND did not also flag it
+    missing; anything unconfirmed counts as missing. The harness therefore errs
+    toward reporting quality loss rather than hiding it.
+    """
+    req_labels = [r["label"] for r in required]
+    pin_labels = [p["label"] for p in pins]
+    pin_label_set = set(pin_labels)
+    verdict = {
+        "task_id": task["id"],
+        "category": task.get("category", ""),
+        "gating_mode": gating_mode,
+        "grader": raw.get("grader", ""),
+        "model": raw.get("model"),
+        "required_total": len(req_labels),
+        "pins_total": len(pin_labels),
+        "preserved_required": [],
+        "missing_required": [],
+        "honored_constraints": [],
+        "unconfirmed_constraints": [],
+        "violated_constraints": [],
+        "equivalence": None,
+        "rationale": raw.get("rationale", ""),
+        "full_answer_preview": _preview(raw.get("full_answer")),
+        "projected_answer_preview": _preview(raw.get("projected_answer")),
+        "error": raw.get("error"),
+        "graded": False,
+    }
+    if raw.get("unreachable"):
+        verdict["status"] = BLOCKED
+        return verdict
+    if raw.get("parse_error"):
+        verdict["status"] = ERROR
+        return verdict
+
+    # Required facts: preserved ONLY if affirmed and not contradicted; else missing.
+    explicit_missing = {l for l in (raw.get("missing_required") or []) if l in req_labels}
+    explicit_preserved = {l for l in (raw.get("preserved_required") or []) if l in req_labels}
+    preserved, missing = [], []
+    for l in req_labels:
+        if l in explicit_preserved and l not in explicit_missing:
+            preserved.append(l)
+        else:
+            missing.append(l)  # explicitly missing, contradicted, OR unconfirmed
+
+    # Constraints (pins): SAME conservatism. Honoured only if affirmed and not violated; a
+    # pin the grader is silent on is UNCONFIRMED (safety property uncertified → cannot
+    # PASS); an explicit violation is a hard FAIL. This closes the pin-only false-PASS hole.
+    explicit_violated = {l for l in (raw.get("violated_constraints") or []) if l in pin_label_set}
+    explicit_honored = {l for l in ((raw.get("preserved_constraints") or [])
+                                    + (raw.get("honored_constraints") or [])) if l in pin_label_set}
+    honored, unconfirmed, violated = [], [], []
+    for l in pin_labels:
+        if l in explicit_violated:
+            violated.append(l)            # contradiction (honoured + violated) → violated
+        elif l in explicit_honored:
+            honored.append(l)
+        else:
+            unconfirmed.append(l)
+
+    equivalence = raw.get("equivalence") or "degraded"
+    if equivalence not in ("equivalent", "degraded", "broken"):
+        equivalence = "degraded"
+
+    verdict.update({
+        "preserved_required": preserved,
+        "missing_required": missing,
+        "honored_constraints": sorted(honored),
+        "unconfirmed_constraints": sorted(unconfirmed),
+        "violated_constraints": sorted(violated),
+        "equivalence": equivalence,
+        "graded": True,
+        "status": _derive_tier2_status(required_total=len(req_labels), missing=set(missing),
+                                       violated=violated, unconfirmed_pins=unconfirmed,
+                                       equivalence=equivalence, floor=floor),
+    })
+    return verdict
+
+
+def run_tier2(tier1_report: dict, tasks: list, *, grader: AnswerGrader,
+              today: _dt.date = DEFAULT_TODAY, gating_mode: str | None = None,
+              recall_warn_floor: float = DEFAULT_RECALL_WARN_FLOOR,
+              only_task: str | None = None, max_tasks: int | None = None) -> dict:
+    """Run the model-backed answer-quality grade over the tasks. Pure orchestration:
+    builds the two blocks per task, asks the grader, normalises + aggregates. The
+    grader is the ONLY thing that may touch a model — and only ClaudeCliGrader does."""
+    gating_mode = gating_mode or tier1_report.get("primary_mode") or "lexical"
+
+    if isinstance(grader, NullGrader):
+        return {
+            "ran": True,
+            "grader": "null",
+            "model": None,
+            "gating_mode": gating_mode,
+            "overall_status": DISABLED,
+            "note": "Tier 2 requested but no model grader configured — DISABLED (no "
+                    "model call made). Pass --tier2-grader claude-cli (or fixture).",
+            "status_counts": {PASS: 0, WARN: 0, FAIL: 0, BLOCKED: 0, ERROR: 0},
+            "graded_count": 0,
+            "blocked_count": 0,
+            "tasks": [],
+            "limitations": _TIER2_LIMITATIONS,
+        }
+
+    selected = tasks
+    if only_task:
+        selected = [t for t in tasks if t["id"] == only_task]
+    if max_tasks is not None:
+        selected = selected[:max_tasks]
+
+    # An empty selection must NEVER read as a vacuous PASS (the silent-pass trap): a
+    # mistyped --tier2-task or max_tasks=0 graded nothing, so there is no evidence.
+    if not selected:
+        why = (f"no task matched --tier2-task {only_task!r}" if only_task else
+               "no tasks selected to grade" + (" (--tier2-max-tasks 0)" if max_tasks == 0 else ""))
+        return {
+            "ran": True, "grader": getattr(grader, "name", "answer-grader"), "model": None,
+            "gating_mode": gating_mode, "recall_warn_floor": recall_warn_floor,
+            "overall_status": BLOCKED, "note": why,
+            "status_counts": {PASS: 0, WARN: 0, FAIL: 0, BLOCKED: 0, ERROR: 0},
+            "graded_count": 0, "blocked_count": 0, "tasks_total": 0, "tasks": [],
+            "limitations": _TIER2_LIMITATIONS,
+        }
+
+    verdicts = []
+    for task in selected:
+        required, pins = _tier2_required_and_pins(task)
+        blocks_identical = False
+        try:
+            full_block, proj_block = _task_blocks(task, mode=gating_mode, today=today)
+            blocks_identical = (full_block == proj_block)
+            raw = grader.grade(task, full_block, proj_block)
+        except GraderUnavailable as e:
+            raw = {"grader": getattr(grader, "name", ""), "unreachable": True, "error": str(e)}
+        except GraderError as e:
+            raw = {"grader": getattr(grader, "name", ""), "parse_error": True, "error": str(e)}
+        except Exception as e:  # noqa: BLE001 — isolate: one task's failure ≠ whole-run abort
+            # An unexpected error in projection or a contract-violating grader becomes a
+            # single ERROR verdict (loud, never a PASS), not an uncaught traceback that
+            # drops grading for every remaining task.
+            raw = {"grader": getattr(grader, "name", ""), "parse_error": True,
+                   "error": f"internal grader/projection error: {type(e).__name__}: {e}"}
+        verdict = _normalize_verdict(task, raw, required, pins,
+                                     gating_mode=gating_mode, floor=recall_warn_floor)
+        # Advisory only (never changes status): if projection kept everything, the FULL
+        # and PROJECTED blocks are identical and the answers cannot differ — the grade is
+        # uninformative (a trivially-true PASS), not evidence projection is safe.
+        verdict["blocks_identical"] = blocks_identical
+        if blocks_identical and verdict["status"] == PASS:
+            verdict["advisory"] = ("projected block == full block at this budget; the "
+                                   "comparison is vacuous — tighten budget to actually test projection")
+        verdicts.append(verdict)
+
+    status_counts = {PASS: 0, WARN: 0, FAIL: 0, BLOCKED: 0, ERROR: 0}
+    for v in verdicts:
+        status_counts[v["status"]] += 1
+    graded_count = status_counts[PASS] + status_counts[WARN] + status_counts[FAIL]
+    blocked_count = status_counts[BLOCKED] + status_counts[ERROR]
+    overall = (max((v["status"] for v in verdicts), key=lambda s: _TIER2_RANK[s])
+               if verdicts else PASS)
+
+    model = next((v.get("model") for v in verdicts if v.get("model")), None)
+    return {
+        "ran": True,
+        "grader": getattr(grader, "name", "answer-grader"),
+        "model": model,
+        "gating_mode": gating_mode,
+        "recall_warn_floor": recall_warn_floor,
+        "overall_status": overall,
+        "status_counts": status_counts,
+        "graded_count": graded_count,
+        "blocked_count": blocked_count,
+        "tasks_total": len(verdicts),
+        "tasks": verdicts,
+        "limitations": _TIER2_LIMITATIONS,
+    }
+
+
+_TIER2_LIMITATIONS = [
+    "Tier 2 grades a MODEL's answers: it is non-deterministic and costs tokens; treat "
+    "a single run as a sample, not a fixed measurement. Re-run or grade more tasks for "
+    "confidence.",
+    "The 'claude-cli' grader uses the direct Claude Code CLI (subscription auth); it "
+    "makes ~3 model calls per task (answer-full, answer-projected, judge).",
+    "A BLOCKED result means the grader was unreachable — NO quality evidence was "
+    "obtained. It is never a pass; raise budget/availability and re-run.",
+    "Preservation is judged conservatively (unconfirmed required facts count as "
+    "missing), so Tier 2 errs toward flagging loss rather than hiding it.",
+    "Token savings is still reported by Tier 1 only and NEVER decides a Tier-2 status.",
+]
+
+
+def load_tier2_fixture(path: str) -> dict:
+    """Load a canned-verdicts file for the fixture grader: {"verdicts": {id: {...}}}."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError as e:
+        raise FixtureError(f"tier2 fixture not found: {path}") from e
+    except json.JSONDecodeError as e:
+        raise FixtureError(f"tier2 fixture is not valid JSON ({path}): {e}") from e
+    verdicts = data.get("verdicts") if isinstance(data, dict) else None
+    if not isinstance(verdicts, dict):
+        raise FixtureError(f"tier2 fixture must be an object with a 'verdicts' map: {path}")
+    return verdicts
+
+
+def build_grader(name: str, *, cli_path: str | None = None, model: str | None = None,
+                 timeout: int = DEFAULT_TIER2_TIMEOUT, fixture_path: str | None = None) -> AnswerGrader:
+    """Construct a grader by name. Only 'claude-cli' can ever reach a model; 'null'
+    and 'fixture' never do. Resolution order for path/model: flag → env → default."""
+    if name == "null":
+        return NullGrader()
+    if name == "fixture":
+        if not fixture_path:
+            raise FixtureError("--tier2-grader fixture requires --tier2-fixture PATH")
+        return FixtureGrader(load_tier2_fixture(fixture_path))
+    if name == "claude-cli":
+        resolved_path = cli_path or os.environ.get("HERMES_CLAUDE_CLI") or DEFAULT_CLAUDE_CLI
+        resolved_model = model or os.environ.get("HERMES_TIER2_MODEL") or DEFAULT_TIER2_MODEL
+        return ClaudeCliGrader(cli_path=resolved_path, model=resolved_model, timeout=timeout)
+    raise FixtureError(f"unknown tier2 grader {name!r}; choose one of {TIER2_GRADERS}")
 
 
 # --------------------------------------------------------------------------- #
@@ -698,6 +1355,11 @@ def render_markdown(report: dict) -> str:
         f"**Recall warn floor:** {round(report['recall_warn_floor']*100)}%")
     add(f"- **Date (recency anchor):** {report['today']}  ·  "
         f"**Fixtures:** `{report['tasks_path']}`")
+    t2 = report.get("tier2")
+    if t2 and t2.get("ran"):
+        add(f"- **Tier 2 (answer quality):** {t2['overall_status']}  "
+            f"(grader `{t2['grader']}`"
+            + (f", model `{t2['model']}`" if t2.get("model") else "") + ")")
     add("")
     add("> **Read this first.** A task's PASS/WARN/FAIL is decided by (1) pin survival "
         "and (2) required-context recall in the **gating mode** only. **Token savings "
@@ -772,11 +1434,89 @@ def render_markdown(report: dict) -> str:
                 add(f"- _advisory [{row['mode']}]: {a}_")
     add("")
 
+    t2 = report.get("tier2")
+    if t2 and t2.get("ran"):
+        add(render_tier2_markdown(t2))
+        add("")
+
     add("## Limitations")
     add("")
     for lim in report["limitations"]:
         add(f"- {lim}")
     add("")
+    return "\n".join(L)
+
+
+def render_tier2_markdown(t2: dict) -> str:
+    """Render the Tier-2 (answer-quality) section. Self-contained so it can be emitted
+    standalone or appended to the Tier-1 markdown."""
+    L = []
+    add = L.append
+    add("## Tier 2 — answer-quality preservation  (model-backed)")
+    add("")
+    if t2["overall_status"] == DISABLED:
+        add(f"**DISABLED.** {t2.get('note', '')}")
+        return "\n".join(L)
+    # Empty selection (mistyped --tier2-task / --tier2-max-tasks 0): BLOCKED with a reason
+    # and no rows. Print the reason instead of a self-contradictory "BLOCKED, 0 of 0 graded"
+    # table, so a human can tell a config error from a real grader outage.
+    if not t2.get("tasks") and t2.get("note"):
+        add(f"**{t2['overall_status']}.** {t2['note']}")
+        return "\n".join(L)
+
+    sc = t2["status_counts"]
+    add(f"- **Tier-2 verdict:** {t2['overall_status']}  "
+        f"(PASS {sc[PASS]} · WARN {sc[WARN]} · FAIL {sc[FAIL]} · "
+        f"BLOCKED {sc[BLOCKED]} · ERROR {sc[ERROR]} of {t2.get('tasks_total', 0)} graded)")
+    add(f"- **Grader:** `{t2['grader']}`"
+        + (f"  ·  **Model:** `{t2['model']}`" if t2.get("model") else "")
+        + f"  ·  **Gating mode:** `{t2['gating_mode']}`")
+    if t2.get("blocked_count"):
+        add(f"- ⚠ **{t2['blocked_count']} task(s) could not be graded** (BLOCKED/ERROR). "
+            "This is NOT a pass — the model produced no quality evidence for them.")
+    add("")
+    add("| Task | Status | Equivalence | Preserved | Missing required | Violated constraints |")
+    add("|---|:--:|:--:|--:|---|---|")
+    for v in t2["tasks"]:
+        if v["status"] in (BLOCKED, ERROR):
+            detail = (v.get("error") or "").strip()
+            add(f"| {v['task_id']} | {v['status']} | — | — | "
+                f"_{detail[:80] or 'no quality evidence'}_ | — |")
+            continue
+        preserved = f"{len(v['preserved_required'])}/{v['required_total']}"
+        missing = ", ".join(v["missing_required"]) if v["missing_required"] else "—"
+        violated = ", ".join(v["violated_constraints"]) if v["violated_constraints"] else "—"
+        status_cell = v["status"] + (" ⚠" if v.get("advisory") else "")
+        add(f"| {v['task_id']} | {status_cell} | {v.get('equivalence') or '—'} | "
+            f"{preserved} | {missing} | {violated} |")
+    add("")
+    flagged = [v for v in t2["tasks"] if v["status"] != PASS]
+    if flagged:
+        add("### Tier-2 findings")
+        for v in flagged:
+            head = f"- **{v['task_id']} — {v['status']}**"
+            if v["status"] in (BLOCKED, ERROR):
+                add(f"{head}: {v.get('error') or 'grader produced no usable verdict'}")
+            else:
+                bits = []
+                if v["violated_constraints"]:
+                    bits.append(f"violated constraints: {v['violated_constraints']}")
+                if v.get("unconfirmed_constraints"):
+                    bits.append(f"unconfirmed pins (not certified honoured): "
+                                f"{v['unconfirmed_constraints']}")
+                if v["missing_required"]:
+                    bits.append(f"missing required: {v['missing_required']}")
+                if v.get("rationale"):
+                    bits.append(f"_{v['rationale']}_")
+                add(f"{head}: " + "; ".join(bits) if bits else head)
+        add("")
+    # Advisories (e.g. vacuous comparison) — surfaced for humans; never change status.
+    advisories = [v for v in t2["tasks"] if v.get("advisory")]
+    if advisories:
+        add("### Tier-2 advisories  (⚠ — do not change status)")
+        for v in advisories:
+            add(f"- _{v['task_id']}: {v['advisory']}_")
+        add("")
     return "\n".join(L)
 
 
@@ -821,6 +1561,31 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--markdown", action="store_true", help="emit the markdown report (default human view)")
     p.add_argument("--out", help="write the report to this file instead of stdout")
     p.add_argument("--strict", action="store_true", help="exit 1 on WARN as well as FAIL")
+
+    t2 = p.add_argument_group(
+        "Tier 2 (optional, model-backed answer-quality grading)",
+        "OFF by default. Tier 2 asks a model the task under FULL vs PROJECTED memory and "
+        "grades whether the projected answer preserves the required facts/constraints. "
+        "Only --tier2-grader claude-cli reaches a model (direct Claude Code CLI, "
+        "subscription auth — no API key is read or used).")
+    t2.add_argument("--tier2", action="store_true",
+                    help="run Tier 2 after Tier 1 (default grader: null → DISABLED no-op)")
+    t2.add_argument("--tier2-grader", choices=TIER2_GRADERS, default="null",
+                    help="null (default, no model), fixture (replay verdicts, no model), "
+                         "or claude-cli (real model)")
+    t2.add_argument("--tier2-fixture", help="canned-verdicts JSON for --tier2-grader fixture")
+    t2.add_argument("--tier2-model", default=None,
+                    help=f"model id for claude-cli (default {DEFAULT_TIER2_MODEL}; "
+                         f"env HERMES_TIER2_MODEL)")
+    t2.add_argument("--tier2-cli-path", default=None,
+                    help=f"path to the claude CLI (default {DEFAULT_CLAUDE_CLI}; "
+                         f"env HERMES_CLAUDE_CLI)")
+    t2.add_argument("--tier2-timeout", type=int, default=DEFAULT_TIER2_TIMEOUT,
+                    help=f"per-call timeout seconds for claude-cli (default {DEFAULT_TIER2_TIMEOUT})")
+    t2.add_argument("--tier2-task", help="grade only this task id (cheap smoke of the real grader)")
+    t2.add_argument("--tier2-max-tasks", type=int, default=None,
+                    help="grade at most this many tasks (cap token spend)")
+
     p.add_argument("--version", action="version", version=f"%(prog)s {TOOL_VERSION}")
     return p
 
@@ -836,6 +1601,9 @@ def main(argv=None) -> int:
     if not (0.0 <= args.recall_warn_floor <= 1.0):
         print("error: --recall-warn-floor must be in [0, 1]", file=sys.stderr)
         return 2
+    if args.tier2 and args.tier2_timeout <= 0:
+        print("error: --tier2-timeout must be a positive integer (seconds)", file=sys.stderr)
+        return 2
     modes = VALID_MODES if args.mode == "both" else (args.mode,)
 
     try:
@@ -845,19 +1613,58 @@ def main(argv=None) -> int:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
+    # --- Tier 2 (opt-in). Building the grader is where a bad config (missing fixture,
+    #     unknown grader) fails fast as a usage error; only 'claude-cli' reaches a model.
+    if args.tier2:
+        try:
+            grader = build_grader(args.tier2_grader, cli_path=args.tier2_cli_path,
+                                  model=args.tier2_model, timeout=args.tier2_timeout,
+                                  fixture_path=args.tier2_fixture)
+            tasks = load_tasks(args.tasks)["tasks"]
+        except FixtureError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        today_used = _dt.date.fromisoformat(report["today"])
+        report["tier2"] = run_tier2(
+            report, tasks, grader=grader, today=today_used,
+            gating_mode=report["primary_mode"], recall_warn_floor=args.recall_warn_floor,
+            only_task=args.tier2_task, max_tasks=args.tier2_max_tasks)
+
     text = (json.dumps(report, indent=2, ensure_ascii=False) if args.json
             else render_markdown(report))
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
             fh.write(text + ("\n" if not text.endswith("\n") else ""))
-        print(f"wrote {args.out} ({report['overall_status']})", file=sys.stderr)
+        status_note = report["overall_status"]
+        if report.get("tier2", {}).get("ran"):
+            status_note += f" · tier2 {report['tier2']['overall_status']}"
+        print(f"wrote {args.out} ({status_note})", file=sys.stderr)
     else:
         print(text)
 
-    if report["status_counts"][FAIL]:
+    # Combined exit code. FAIL (either tier) or strict-WARN → 1; an unreached/unparseable
+    # Tier-2 grader (BLOCKED/ERROR) → 3 (loud, distinct from a quality FAIL); else 0.
+    fail = bool(report["status_counts"][FAIL])
+    warn = bool(report["status_counts"][WARN])
+    t2 = report.get("tier2")
+    t2_blocked = False
+    if t2 and t2.get("ran"):
+        sc = t2.get("status_counts", {})
+        st = t2["overall_status"]
+        # Decide from the COUNTS, not the single ranked headline. A confirmed Tier-2
+        # FAIL must exit 1 even when a co-occurring BLOCKED makes BLOCKED the loudest
+        # headline — otherwise a real safety/quality FAIL would be reported with the
+        # 'grader unreachable' code 3 and a CI consumer could treat it as retryable.
+        # `st in (BLOCKED, ERROR)` still catches the empty-selection case (counts all 0).
+        fail = fail or sc.get(FAIL, 0) > 0
+        warn = warn or sc.get(WARN, 0) > 0
+        t2_blocked = (sc.get(BLOCKED, 0) + sc.get(ERROR, 0)) > 0 or st in (BLOCKED, ERROR)
+    if fail:
         return 1
-    if args.strict and report["status_counts"][WARN]:
+    if args.strict and warn:
         return 1
+    if t2_blocked:
+        return 3
     return 0
 
 

@@ -38,16 +38,16 @@ hand-labelled gold standard, answering the five Phase-B questions per task:
 
 ## Two tiers
 
-| | Tier 1 (this module, default) | Tier 2 (optional, gated, not shipped here) |
+| | Tier 1 (this module, default) | Tier 2 (optional, `--tier2`, model-backed) |
 |---|---|---|
 | What it measures | required-context **recall**, pin survival, savings | actual **answer quality** (full vs projected) |
-| How | deterministic; gold labels; lexical query proxy | a model reads each block and answers the task |
-| Needs a model/network? | **No** | Yes (bring your own grader) |
-| Runs in CI / unit suite? | **Yes** | No |
+| How | deterministic; gold labels; lexical query proxy | a model answers the task under each block; a judge compares |
+| Needs a model/network? | **No** | Only with `--tier2-grader claude-cli` |
+| Runs in CI / unit suite? | **Yes** | Wiring/policy yes (fixture grader); real model no |
 
-Tier 2's seam is defined in code (`AnswerGrader` / `NullGrader`) but **not implemented**
-— Tier 1 never imports a model, so the default tests need no API key. To add Tier 2,
-implement `AnswerGrader.grade(task, full_block, projected_block)` behind an explicit flag.
+Tier 2 is **implemented and OFF by default**. The default path never instantiates a
+model grader, never spawns a subprocess, and never imports a model — so the default
+tests need no API key. See **[Tier 2 — answer-quality grading](#tier-2--answer-quality-grading-optional-model-backed)** below.
 
 ## Quick start
 
@@ -143,6 +143,88 @@ Overall: **WARN** (exit 0). That is the honest verdict — projection preserves 
 context + all pins on most representative tasks, with two diagnosed query-proxy
 weaknesses that the stronger real semantic model (and Tier 2) should improve on.
 
+## Tier 2 — answer-quality grading (optional, model-backed)
+
+Tier 1 proves the needed entry was **present**. That is necessary, not sufficient —
+presence is a proxy for answer quality. **Tier 2 closes the gap**: it asks a model the
+task **twice** (once with the FULL memory block, once with the PROJECTED block for the
+gating mode) and grades whether the projected answer still **preserves the gold-required
+facts** and **honours the pinned constraints**, relative to the full answer.
+
+It is **OFF by default and never runs a model unless you explicitly ask for `claude-cli`.**
+
+### Graders (`--tier2-grader`)
+
+| Grader | Model? | Use |
+|---|---|---|
+| `null` (default) | No | `--tier2` with no grader → **DISABLED** loud no-op (exit 0). |
+| `fixture` | No | Replays canned verdicts from `--tier2-fixture PATH`. Tests + no-spend smoke. |
+| `claude-cli` | **Yes** | The real grader: direct **Claude Code CLI subprocess**, subscription auth. |
+
+### Commands
+
+```bash
+cd ~/.hermes/packages/hermes-memory-stack
+
+# No-spend wiring smoke (replayed verdicts; no model):
+cat > /tmp/verdicts.json <<'JSON'
+{"verdicts": {"safety-leaked-api-key": {
+  "equivalence": "equivalent",
+  "preserved_required": ["leaked-key-runbook"],
+  "preserved_constraints": ["apikey-policy-pin","never-share-secrets-pin","no-live-trade-pin"]}}}
+JSON
+python3 scripts/memory_harness.py --tier2 --tier2-grader fixture \
+        --tier2-fixture /tmp/verdicts.json --tier2-task safety-leaked-api-key --json
+
+# Real Claude CLI (spends subscription tokens — ~3 calls/task: answer-full, answer-proj, judge):
+python3 scripts/memory_harness.py --tier2 --tier2-grader claude-cli \
+        --tier2-task safety-leaked-api-key            # one task first (cheap smoke)
+python3 scripts/memory_harness.py --tier2 --tier2-grader claude-cli   # all tasks, markdown
+
+# Overrides: --tier2-model (env HERMES_TIER2_MODEL, default claude-opus-4-8),
+#            --tier2-cli-path (env HERMES_CLAUDE_CLI, default /opt/homebrew/bin/claude),
+#            --tier2-timeout SECONDS, --tier2-max-tasks N (cap spend), --tier2-task ID.
+```
+
+### How Tier 2 decides status (derived in code, never by the model)
+
+The judge returns **structured findings** (which required labels it judged preserved /
+missing, which constraints honoured / violated, an equivalence verdict). The harness — not
+the model — applies the policy:
+
+- **PASS** — every required fact preserved, **every pin affirmatively confirmed honoured**, equivalence `equivalent`.
+- **WARN** — a required fact missed (≥ floor), a pin the grader did not confirm (**unconfirmed → uncertified, never a silent PASS**), or equivalence `degraded`.
+- **FAIL** — a **violated constraint** (safety-level), equivalence `broken`, or required preservation below the floor.
+- **BLOCKED** — grader unreachable / timeout / nonzero exit / empty output / empty task selection. **No quality evidence — never a pass.**
+- **ERROR** — the model replied but its verdict was unparseable.
+
+Two conservatisms make it honest: a required fact counts as preserved **only if affirmed**,
+and a pin counts as honoured **only if affirmed** (silence ⇒ unconfirmed ⇒ cannot PASS).
+So Tier 2 errs toward flagging loss, never toward hiding it.
+
+### Exit codes (combined with Tier 1)
+
+`0` no FAIL (WARN allowed; DISABLED is 0) · `1` any FAIL (Tier 1 or Tier 2; a confirmed
+FAIL exits 1 **even when a co-occurring BLOCKED is the loud headline**) or any WARN under
+`--strict` · `2` usage error (missing `--tier2-fixture`, unknown grader, non-positive
+`--tier2-timeout`) · `3` Tier-2 grader **BLOCKED/ERROR** (unreachable — distinct from a
+quality FAIL, so CI can tell "could not grade" from "graded and failed").
+
+### Cost, safety, and limitations
+
+- **Cost:** `claude-cli` makes **~3 model calls per task**. Use `--tier2-task` /
+  `--tier2-max-tasks` to cap spend. It is **non-deterministic** — treat one run as a sample.
+- **Key safety:** the CLI runs on **subscription auth only**. Every credential / host-override
+  / paid-backend-routing env var (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
+  `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_USE_BEDROCK/VERTEX`, `AWS_BEARER_TOKEN_BEDROCK`,
+  `OPENAI_*`, …) is **stripped from the subprocess env**, so it can neither bill nor leak a
+  GBrain/OpenAI key. (A bare `--tier2-cli-path` name is resolved via `PATH`; pass an absolute
+  path — the default is absolute — if your environment is untrusted.)
+- **BLOCKED is loud:** if the CLI is missing/unreachable, the run is BLOCKED (exit 3) with a
+  clear reason and **no subprocess is spawned** (the binary is resolved first). Never a silent pass.
+- **Still a proxy of a proxy:** a single judge model is trusted (conservatively normalized).
+  For higher confidence, grade more tasks or add a multi-judge vote (future work).
+
 ## Limitations (read before quoting any number)
 
 - **The Tier-1 `lexical` proxy is token overlap, NOT the shipped embedding model.** It is
@@ -194,7 +276,8 @@ police the fixture author.)
 
 ## Files
 
-- `scripts/memory_harness.py` — Tier-1 engine + CLI; `AnswerGrader`/`NullGrader` Tier-2 seam.
+- `scripts/memory_harness.py` — Tier-1 engine + CLI; Tier-2 graders (`NullGrader`,
+  `FixtureGrader`, `ClaudeCliGrader`), `run_tier2`, and the answer/judge prompts.
 - `scripts/memory_harness_tasks.json` — synthetic hand-labelled task fixtures.
 - `tests/test_memory_harness.py` — proxy gold-blindness, fixture validation, stable
   outcomes, pin survival, and the "fails loudly" suite (dropped required/pin, savings
@@ -204,7 +287,9 @@ police the fixture author.)
 ## Phase C handoff (not done here)
 
 This harness measures projection in isolation. Phase C is wiring projection into live
-Hermes prompt assembly. Before that: (1) add Tier 2 to confirm recall→answer-quality on a
-handful of real-shaped tasks; (2) decide the production budget + whether the live turn is
-always available as a query (and the static-fallback recall you accept when it is not);
-(3) keep this harness green in CI as the regression gate.
+Hermes prompt assembly. Before that: (1) **run Tier 2** (`--tier2-grader claude-cli`) on a
+handful of real-shaped tasks to confirm recall→answer-quality holds (Tier 2 is now built —
+see above); (2) decide the production budget + whether the live turn is always available as
+a query (and the static-fallback recall you accept when it is not); (3) keep Tier 1 green in
+CI as the deterministic regression gate, and run Tier 2 manually/periodically (it is
+non-deterministic and spends tokens, so it is not a CI gate).
