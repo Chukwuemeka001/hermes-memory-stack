@@ -1,19 +1,19 @@
 # Memory Shadow Report
 
-**Status:** WARN
+**Status:** PASS
 
 ## Metrics
 
 | Metric | Value |
 |---|---:|
-| Shadow events | 9 |
-| Avg savings | 70.72% |
+| Shadow events | 12 |
+| Avg savings | 67.44% |
 | Min savings | 57.5% |
 | Avg full tokens | 4648 |
-| Avg projected tokens | 1360.56 |
+| Avg projected tokens | 1513.5 |
 | P95 projected tokens | 1976.0 |
 | Semantic source rate | 100.0% |
-| Answer-usage events | 2 |
+| Answer-usage events | 5 |
 | Used-missing count | 0 |
 | Raw block events | 0 |
 | Over-budget events | 0 |
@@ -21,31 +21,27 @@
 | Determinism violations | 0 |
 | Duplicate turns deduped | 0 |
 
-## Warnings
-
-- only 2 answer_usage event(s); need >= 5 for rollout confidence
-
 ## Relevance sources
 
 | Source | Count |
 |---|---:|
 | `memories-index:20 hits via subprocess:python3.14` | 7 |
-| `memories-index:20 hits via direct` | 2 |
+| `memories-index:20 hits via direct` | 5 |
 
 ## Top skipped refs
 
 | Ref | Count |
 |---|---:|
-| `memory#12` | 9 |
-| `memory#14` | 9 |
-| `memory#15` | 9 |
-| `memory#20` | 9 |
-| `memory#24` | 9 |
-| `memory#28` | 9 |
-| `memory#35` | 9 |
-| `memory#38` | 9 |
-| `memory#5` | 9 |
-| `memory#9` | 9 |
+| `memory#12` | 12 |
+| `memory#14` | 12 |
+| `memory#15` | 12 |
+| `memory#20` | 12 |
+| `memory#24` | 12 |
+| `memory#28` | 12 |
+| `memory#35` | 12 |
+| `memory#38` | 12 |
+| `memory#5` | 12 |
+| `memory#9` | 12 |
 
 ## Top used-but-missing refs
 
@@ -55,11 +51,10 @@
 
 ## Rollout decision
 
-**WARN** — Do not flip live projection globally; tune and collect more evidence.
+**PASS** — Projection can be trialed in low-risk lanes; keep shadow logging on.
 
 ### Next actions
 
-- Inspect top_skipped_refs and top_used_missing_refs.
-- Raise budget or relevance reserve if required context is consistently skipped.
-- Add pin rules for any skipped safety/identity/operational items.
+- Enable projected mode only for low-risk summaries/status checks.
+- Continue shadow logs with answer_usage enabled for serious work.
 
