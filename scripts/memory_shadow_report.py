@@ -97,7 +97,8 @@ def _collect_used_missing(event: dict) -> list[dict]:
 
 def summarize(events: list[dict], errors: list[dict], *, min_avg_savings: float,
               max_missing_rate: float, require_semantic: bool = True,
-              min_answer_turns: int = 5) -> dict:
+              min_answer_turns: int = 5, min_daemon_rate: float = 0.95,
+              max_subprocess_rate: float = 0.0, max_p95_retrieval_latency_ms: float = 500.0) -> dict:
     raw_shadow_events = [e for e in events if e.get("tool") == "memory_shadow" or e.get("mode") == "shadow"]
     duplicates = 0
     by_turn: dict[str, dict] = {}
@@ -124,6 +125,30 @@ def summarize(events: list[dict], errors: list[dict], *, min_avg_savings: float,
 
     source_counts = collections.Counter((e.get("projected") or {}).get("relevance_source") or "unknown" for e in shadow_events)
     semantic_count = sum(1 for e in shadow_events if _source_is_semantic((e.get("projected") or {}).get("relevance_source") or ""))
+    retrieval_events = []
+    retrieval_path_counts: collections.Counter[str] = collections.Counter()
+    retrieval_latencies: list[float] = []
+    retrieval_hits: list[int] = []
+    retrieval_requested: list[int] = []
+    retrieval_candidate_pool: list[int] = []
+    for e in shadow_events:
+        tel = (e.get("projected") or {}).get("retrieval_telemetry") or {}
+        if not isinstance(tel, dict) or not tel:
+            continue
+        retrieval_events.append(tel)
+        path = str(tel.get("path") or "unknown")
+        retrieval_path_counts[path] += 1
+        for key, bucket in (("retrieval_latency_ms", retrieval_latencies),
+                            ("hits_returned", retrieval_hits),
+                            ("n_requested", retrieval_requested),
+                            ("candidate_pool_size", retrieval_candidate_pool)):
+            val = tel.get(key)
+            if val is None:
+                continue
+            try:
+                bucket.append(float(val))
+            except (TypeError, ValueError):
+                pass
 
     skipped_ref_counts: collections.Counter[str] = collections.Counter()
     selected_ref_counts: collections.Counter[str] = collections.Counter()
@@ -161,6 +186,10 @@ def summarize(events: list[dict], errors: list[dict], *, min_avg_savings: float,
     missing_rate = (len(missing_items) / answer_usage_events) if answer_usage_events else 0.0
     avg_savings = _mean(savings)
     semantic_rate = (semantic_count / total) if total else 0.0
+    telemetry_rate = (len(retrieval_events) / total) if total else 0.0
+    daemon_rate = (retrieval_path_counts.get("daemon", 0) / len(retrieval_events)) if retrieval_events else 0.0
+    subprocess_rate = (retrieval_path_counts.get("subprocess", 0) / len(retrieval_events)) if retrieval_events else 0.0
+    p95_latency_ms = _p95(retrieval_latencies)
 
     failures: list[str] = []
     warnings: list[str] = []
@@ -187,6 +216,14 @@ def summarize(events: list[dict], errors: list[dict], *, min_avg_savings: float,
         warnings.append(f"average savings {avg_savings}% below threshold {min_avg_savings}%")
     if require_semantic and total and semantic_rate < 1.0:
         warnings.append(f"semantic relevance source used for {semantic_rate:.0%} of turns")
+    if total and telemetry_rate < 1.0:
+        failures.append(f"retrieval telemetry present for {telemetry_rate:.0%} of turns")
+    if retrieval_events and daemon_rate < min_daemon_rate:
+        failures.append(f"daemon retrieval path rate {daemon_rate:.0%} below threshold {min_daemon_rate:.0%}")
+    if retrieval_events and subprocess_rate > max_subprocess_rate:
+        failures.append(f"subprocess fallback rate {subprocess_rate:.0%} exceeds threshold {max_subprocess_rate:.0%}")
+    if retrieval_events and p95_latency_ms > max_p95_retrieval_latency_ms:
+        failures.append(f"p95 retrieval latency {p95_latency_ms}ms exceeds threshold {max_p95_retrieval_latency_ms}ms")
     if answer_usage_events == 0:
         warnings.append("no answer_usage telemetry; cannot verify used-but-skipped context")
     elif answer_usage_events < min_answer_turns:
@@ -214,6 +251,15 @@ def summarize(events: list[dict], errors: list[dict], *, min_avg_savings: float,
             "avg_selected_entries": _mean(selected_counts),
             "avg_skipped_entries": _mean(skipped_counts),
             "semantic_source_rate": round(semantic_rate, 4),
+            "retrieval_telemetry_events": len(retrieval_events),
+            "retrieval_telemetry_rate": round(telemetry_rate, 4),
+            "daemon_path_rate": round(daemon_rate, 4),
+            "subprocess_fallback_rate": round(subprocess_rate, 4),
+            "p95_retrieval_latency_ms": p95_latency_ms,
+            "avg_retrieval_latency_ms": _mean(retrieval_latencies),
+            "avg_hits_returned": _mean(retrieval_hits),
+            "avg_n_requested": _mean(retrieval_requested),
+            "avg_candidate_pool_size": _mean(retrieval_candidate_pool),
             "answer_usage_events": answer_usage_events,
             "min_answer_turns": min_answer_turns,
             "used_missing_count": len(missing_items),
@@ -225,6 +271,7 @@ def summarize(events: list[dict], errors: list[dict], *, min_avg_savings: float,
             "determinism_violations": determinism_violations,
         },
         "sources": dict(source_counts.most_common()),
+        "retrieval_paths": dict(retrieval_path_counts.most_common()),
         "top_skipped_refs": skipped_ref_counts.most_common(20),
         "top_selected_refs": selected_ref_counts.most_common(20),
         "top_used_missing_refs": missing_ref_counts.most_common(20),
@@ -286,6 +333,12 @@ def render_markdown(report: dict) -> str:
         f"| Avg projected tokens | {m['avg_projected_tokens']} |",
         f"| P95 projected tokens | {m['p95_projected_tokens']} |",
         f"| Semantic source rate | {round(m['semantic_source_rate'] * 100, 2)}% |",
+        f"| Retrieval telemetry events | {m['retrieval_telemetry_events']} |",
+        f"| Daemon path rate | {round(m['daemon_path_rate'] * 100, 2)}% |",
+        f"| Subprocess fallback rate | {round(m['subprocess_fallback_rate'] * 100, 2)}% |",
+        f"| P95 retrieval latency | {m['p95_retrieval_latency_ms']} ms |",
+        f"| Avg hits returned | {m['avg_hits_returned']} |",
+        f"| Avg candidate pool | {m['avg_candidate_pool_size']} |",
         f"| Answer-usage events | {m['answer_usage_events']} |",
         f"| Used-missing count | {m['used_missing_count']} |",
         f"| Raw block events | {m['raw_block_events']} |",
@@ -326,6 +379,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-missing-rate", type=float, default=0.10)
     p.add_argument("--min-answer-turns", type=int, default=5, help="answer-aware events required before PASS (default 5)")
     p.add_argument("--allow-nonsemantic", action="store_true", help="do not warn when relevance source is static/non-semantic")
+    p.add_argument("--min-daemon-rate", type=float, default=0.95, help="minimum daemon retrieval path rate before PASS (default 0.95)")
+    p.add_argument("--max-subprocess-rate", type=float, default=0.0, help="maximum subprocess fallback rate before PASS (default 0.0)")
+    p.add_argument("--max-p95-retrieval-latency-ms", type=float, default=500.0, help="maximum P95 retrieval latency before PASS (default 500ms)")
     p.add_argument("--strict", action="store_true", help="exit 1 on WARN as well as FAIL")
     p.add_argument("--version", action="version", version=f"%(prog)s {TOOL_VERSION}")
     return p
@@ -337,7 +393,10 @@ def main(argv=None) -> int:
     report = summarize(events, errors, min_avg_savings=args.min_avg_savings,
                        max_missing_rate=args.max_missing_rate,
                        require_semantic=not args.allow_nonsemantic,
-                       min_answer_turns=args.min_answer_turns)
+                       min_answer_turns=args.min_answer_turns,
+                       min_daemon_rate=args.min_daemon_rate,
+                       max_subprocess_rate=args.max_subprocess_rate,
+                       max_p95_retrieval_latency_ms=args.max_p95_retrieval_latency_ms)
     text = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) if args.json else render_markdown(report)
     if args.out:
         out = Path(os.path.expanduser(args.out))

@@ -97,7 +97,7 @@ def _get_model():
     if _model is None:
         from sentence_transformers import SentenceTransformer
 
-        t0 = time.time()
+        t0 = time.monotonic()
         _log(f"[memory_entry_index] loading model {MODEL_NAME} ...")
         _model = SentenceTransformer(MODEL_NAME)
         _log(f"[memory_entry_index] model ready in {time.time() - t0:.1f}s")
@@ -190,7 +190,7 @@ def index_memories(home: str | None = None, *, reset: bool = False, batch_size: 
     ``collection`` and ``model`` are injectable for hermetic tests. The real path
     lazily imports ChromaDB + sentence-transformers.
     """
-    t0 = time.time()
+    t0 = time.monotonic()
     home = hermes_home(home)
     if reset:
         _delete_collection_if_exists(home)
@@ -254,25 +254,28 @@ def _hit_from(chroma_id, document, metadata, distance) -> dict:
     }
 
 
-def _daemon_search_memories(query: str, *, n_results: int, where: dict | None = None) -> list[dict] | None:
+def _daemon_search_memories(query: str, *, n_results: int, where: dict | None = None) -> tuple[list[dict], dict] | None:
     """Ask the warm semantic daemon for memory-entry hits.
 
     Returns None when the daemon/path is unavailable so callers can fall back to
     the cold direct Chroma path. Returned hits are handle-first and tagged with
     ``__search_source=daemon`` for projection telemetry.
     """
+    requested = max(1, int(n_results))
+    t0 = time.monotonic()
     try:
         import semantic_query as SQ  # noqa: WPS433
         resp = SQ._daemon_request({
             "mode": "semantic",
             "collection": COLLECTION_NAME,
             "query": query,
-            "n": max(1, int(n_results)),
+            "n": requested,
             "where": where or None,
             "fields": "handle",
         }, timeout=float(os.environ.get("HERMES_MEMORY_ENTRY_DAEMON_TIMEOUT", "8")))
     except Exception:
         return None
+    latency_ms = round((time.monotonic() - t0) * 1000, 2)
     if not resp.get("ok") or not isinstance(resp.get("results"), list):
         return None
     out = []
@@ -292,32 +295,52 @@ def _daemon_search_memories(query: str, *, n_results: int, where: dict | None = 
             "document": "",
             "__search_source": "daemon",
         })
-    return out
+    telemetry = {
+        "path": "daemon",
+        "retrieval_latency_ms": latency_ms,
+        "n_requested": requested,
+        "hits_returned": len(out),
+        "candidate_pool_size": resp.get("candidate_pool_size") or resp.get("collection_count"),
+        "collection": COLLECTION_NAME,
+    }
+    return out, telemetry
 
 
-def search_memories(query: str, home: str | None = None, *, n_results: int = 5,
-                    collection=None, model=None, where: dict | None = None) -> list[dict]:
-    """Semantic top-k over indexed memory entries. Returns [] on any miss."""
+def search_memories_with_telemetry(query: str, home: str | None = None, *, n_results: int = 5,
+                                   collection=None, model=None, where: dict | None = None) -> tuple[list[dict], dict]:
+    """Semantic top-k over indexed memory entries plus retrieval telemetry."""
+    requested = max(1, int(n_results))
+    empty_telemetry = {
+        "path": "disabled", "retrieval_latency_ms": 0.0, "n_requested": requested,
+        "hits_returned": 0, "candidate_pool_size": 0, "collection": COLLECTION_NAME,
+    }
     if not query or not query.strip():
-        return []
+        return [], empty_telemetry
     home = hermes_home(home)
+    overall_t0 = time.monotonic()
+    daemon_attempted = False
     if collection is None and model is None and os.environ.get("HERMES_MEMORY_ENTRY_DAEMON", "1") not in {"0", "false", "False"}:
-        hits = _daemon_search_memories(query, n_results=n_results, where=where)
-        if hits is not None:
-            return hits
+        daemon_attempted = True
+        daemon_result = _daemon_search_memories(query, n_results=n_results, where=where)
+        if daemon_result is not None:
+            return daemon_result
+    t0 = overall_t0 if daemon_attempted else time.monotonic()
     try:
         collection = collection or _get_collection(home)
         model = model or _get_model()
         q_emb = model.encode([query], show_progress_bar=False, normalize_embeddings=True).tolist()
         res = collection.query(
             query_embeddings=q_emb,
-            n_results=max(1, int(n_results)),
+            n_results=requested,
             where=where,
             include=["documents", "metadatas", "distances"],
         )
     except Exception as e:
         _log(f"[memory_entry_index] search failed: {e}")
-        return []
+        tel = {**empty_telemetry, "path": "direct", "retrieval_latency_ms": round((time.monotonic() - t0) * 1000, 2), "error": str(e)}
+        if daemon_attempted:
+            tel["daemon_attempted"] = True
+        return [], tel
     ids = (res.get("ids") or [[]])[0]
     docs = (res.get("documents") or [[]])[0]
     metas = (res.get("metadatas") or [[]])[0]
@@ -325,6 +348,24 @@ def search_memories(query: str, home: str | None = None, *, n_results: int = 5,
     hits = [_hit_from(ids[i], docs[i] if i < len(docs) else "", metas[i] if i < len(metas) else {}, dists[i] if i < len(dists) else None) for i in range(len(ids))]
     for h in hits:
         h["__search_source"] = "direct"
+    telemetry = {
+        "path": "direct",
+        "retrieval_latency_ms": round((time.monotonic() - t0) * 1000, 2),
+        "n_requested": requested,
+        "hits_returned": len(hits),
+        "candidate_pool_size": int(collection.count()) if hasattr(collection, "count") else None,
+        "collection": COLLECTION_NAME,
+    }
+    if daemon_attempted:
+        telemetry["daemon_attempted"] = True
+    return hits, telemetry
+
+
+def search_memories(query: str, home: str | None = None, *, n_results: int = 5,
+                    collection=None, model=None, where: dict | None = None) -> list[dict]:
+    """Semantic top-k over indexed memory entries. Returns [] on any miss."""
+    hits, _telemetry = search_memories_with_telemetry(
+        query, home, n_results=n_results, collection=collection, model=model, where=where)
     return hits
 
 

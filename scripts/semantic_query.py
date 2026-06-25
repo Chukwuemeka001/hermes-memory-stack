@@ -353,7 +353,25 @@ def _handle_request(req: dict) -> dict:
     else:
         hits = semantic_search(query, n_results=n, db_path=db_path, collection_name=collection_name,
                                where=where, include_document=include_document)
-    return {"ok": True, "mode": mode, "collection": collection_name, "count": len(hits), "results": hits}
+    collection_count = _collection_count(collection_name)
+    return {
+        "ok": True,
+        "mode": mode,
+        "collection": collection_name,
+        "count": len(hits),
+        "n_requested": n,
+        "candidate_pool_size": collection_count,
+        "collection_count": collection_count,
+        "results": hits,
+    }
+
+
+def _collection_count(name: str) -> int:
+    try:
+        col = _get_named_collection(name)
+        return int(col.count()) if col is not None else 0
+    except Exception:
+        return 0
 
 
 def _collection_counts() -> dict:

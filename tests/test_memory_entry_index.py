@@ -161,6 +161,15 @@ class TestIndexMemories(unittest.TestCase):
         self.assertEqual(hits[0]["__search_source"], "direct")
         self.assertGreater(hits[0]["score"], 0.0)
 
+        hits2, telemetry = mei.search_memories_with_telemetry(
+            "trading safety", root, collection=collection, model=FakeModel(), n_results=1)
+        self.assertEqual(len(hits2), 1)
+        self.assertEqual(telemetry["path"], "direct")
+        self.assertEqual(telemetry["n_requested"], 1)
+        self.assertEqual(telemetry["hits_returned"], 1)
+        self.assertEqual(telemetry["candidate_pool_size"], 1)
+        self.assertIn("retrieval_latency_ms", telemetry)
+
     def test_daemon_search_is_preferred_and_handle_only(self):
         root = make_home(memory_entries=["Memory projection uses semantic relevance."])
         calls = []
@@ -169,6 +178,7 @@ class TestIndexMemories(unittest.TestCase):
             calls.append((req, timeout))
             return {
                 "ok": True,
+                "candidate_pool_size": 9,
                 "results": [{
                     "chroma_id": "MEMORY.md::abc",
                     "entry_ref": "memory#1",
@@ -187,6 +197,7 @@ class TestIndexMemories(unittest.TestCase):
         mei.sys.modules["semantic_query"] = types.SimpleNamespace(_daemon_request=fake_daemon)
         try:
             hits = mei.search_memories("projection", root, n_results=3, where={"store": "MEMORY.md"})
+            hits2, telemetry = mei.search_memories_with_telemetry("projection", root, n_results=3)
         finally:
             if old is None:
                 mei.sys.modules.pop("semantic_query", None)
@@ -198,6 +209,45 @@ class TestIndexMemories(unittest.TestCase):
         self.assertEqual(hits[0]["entry_ref"], "memory#1")
         self.assertEqual(hits[0]["document"], "")
         self.assertEqual(hits[0]["__search_source"], "daemon")
+
+        self.assertEqual(hits2[0]["__search_source"], "daemon")
+        self.assertEqual(telemetry["path"], "daemon")
+        self.assertEqual(telemetry["n_requested"], 3)
+        self.assertEqual(telemetry["hits_returned"], 1)
+        self.assertEqual(telemetry["candidate_pool_size"], 9)
+
+    def test_direct_fallback_latency_includes_failed_daemon_attempt(self):
+        root = make_home(memory_entries=["Memory projection uses semantic relevance."])
+        collection = FakeCollection()
+        mei.index_memories(root, collection=collection, model=FakeModel())
+        ticks = [0.0]
+
+        def fake_monotonic():
+            return ticks[0]
+
+        def fake_daemon(*_args, **_kwargs):
+            ticks[0] += 8.0
+            return None
+
+        old_daemon = mei._daemon_search_memories
+        old_collection = mei._get_collection
+        old_model = mei._get_model
+        old_monotonic = mei.time.monotonic
+        mei._daemon_search_memories = fake_daemon
+        mei._get_collection = lambda _home: collection
+        mei._get_model = lambda: FakeModel()
+        mei.time.monotonic = fake_monotonic
+        try:
+            hits, telemetry = mei.search_memories_with_telemetry("projection", root, n_results=1)
+        finally:
+            mei._daemon_search_memories = old_daemon
+            mei._get_collection = old_collection
+            mei._get_model = old_model
+            mei.time.monotonic = old_monotonic
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(telemetry["path"], "direct")
+        self.assertTrue(telemetry["daemon_attempted"])
+        self.assertGreaterEqual(telemetry["retrieval_latency_ms"], 8000.0)
 
 
 if __name__ == "__main__":

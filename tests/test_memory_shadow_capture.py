@@ -51,6 +51,10 @@ class TestMemoryShadowCapture(unittest.TestCase):
             "--report-md", md,
             "--report-json", js,
             "--turn-id", "capture-test",
+            "--allow-nonsemantic",
+            "--min-daemon-rate", "0",
+            "--max-subprocess-rate", "1",
+            "--max-p95-retrieval-latency-ms", "999999",
             "--json",
         ], capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stderr)

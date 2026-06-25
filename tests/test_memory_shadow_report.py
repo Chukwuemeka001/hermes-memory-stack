@@ -12,9 +12,10 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCRIPT = os.path.join(ROOT, "scripts", "memory_shadow_report.py")
 
 
-def event(turn_id="t1", *, savings=55.0, source="memories-index:20 hits via subprocess:python3.14",
+def event(turn_id="t1", *, savings=55.0, source="memories-index:20 hits via daemon",
           answer_usage=None, include_blocks=False, active_block="full", over_budget=False,
-          projected_sha="proj", safety_drop=False):
+          projected_sha="proj", safety_drop=False, retrieval_path="daemon",
+          retrieval_latency_ms=80.0, retrieval_telemetry=True):
     full = {"entries_total": 4, "tokens": 2000, "sha256": "full"}
     projected = {
         "entries_selected": 2,
@@ -28,6 +29,15 @@ def event(turn_id="t1", *, savings=55.0, source="memories-index:20 hits via subp
         "relevance_reserved_count": 2,
         "over_budget": over_budget,
     }
+    if retrieval_telemetry:
+        projected["retrieval_telemetry"] = {
+            "path": retrieval_path,
+            "retrieval_latency_ms": retrieval_latency_ms,
+            "n_requested": 20,
+            "hits_returned": 20,
+            "candidate_pool_size": 61,
+            "collection": "memories",
+        }
     if include_blocks:
         full["block"] = "raw full memory"
     return {
@@ -142,6 +152,49 @@ class TestShadowReport(unittest.TestCase):
             text = fh.read()
         self.assertIn("# Memory Shadow Report", text)
         self.assertIn("**Status:** PASS", text)
+        self.assertIn("Daemon path rate", text)
+
+    def test_fail_on_missing_retrieval_telemetry(self):
+        path = self.write_jsonl([event(answer_usage={"used_missing_from_projection": []}, retrieval_telemetry=False)])
+        r = self.run_report(path, "--min-answer-turns", "1")
+        data = json.loads(r.stdout)
+        self.assertEqual(data["status"], "FAIL")
+        self.assertTrue(any("retrieval telemetry" in f for f in data["failures"]))
+
+    def test_fail_on_subprocess_fallback_when_daemon_required(self):
+        path = self.write_jsonl([event(answer_usage={"used_missing_from_projection": []}, retrieval_path="subprocess", source="memories-index:20 hits via subprocess:python3.14")])
+        r = self.run_report(path, "--min-answer-turns", "1")
+        data = json.loads(r.stdout)
+        self.assertEqual(data["status"], "FAIL")
+        self.assertEqual(data["metrics"]["subprocess_fallback_rate"], 1.0)
+        self.assertTrue(any("subprocess fallback rate" in f for f in data["failures"]))
+
+    def test_fail_on_high_retrieval_latency(self):
+        path = self.write_jsonl([event(answer_usage={"used_missing_from_projection": []}, retrieval_latency_ms=999.0)])
+        r = self.run_report(path, "--min-answer-turns", "1", "--max-p95-retrieval-latency-ms", "100")
+        data = json.loads(r.stdout)
+        self.assertEqual(data["status"], "FAIL")
+        self.assertEqual(data["metrics"]["p95_retrieval_latency_ms"], 999.0)
+        self.assertTrue(any("p95 retrieval latency" in f for f in data["failures"]))
+
+    def test_fail_daemon_rate_below_threshold(self):
+        rows = [event(f"d{i}", answer_usage={"used_missing_from_projection": []}, retrieval_path="daemon") for i in range(18)]
+        rows += [event(f"x{i}", answer_usage={"used_missing_from_projection": []}, retrieval_path="direct", source="memories-index:20 hits via direct") for i in range(2)]
+        path = self.write_jsonl(rows)
+        r = self.run_report(path, "--min-answer-turns", "1")
+        data = json.loads(r.stdout)
+        self.assertEqual(data["status"], "FAIL")
+        self.assertEqual(data["metrics"]["daemon_path_rate"], 0.9)
+        self.assertTrue(any("daemon retrieval path rate" in f for f in data["failures"]))
+
+    def test_daemon_rate_threshold_boundary_passes(self):
+        rows = [event(f"d{i}", answer_usage={"used_missing_from_projection": []}, retrieval_path="daemon") for i in range(19)]
+        rows += [event("x0", answer_usage={"used_missing_from_projection": []}, retrieval_path="direct", source="memories-index:20 hits via direct")]
+        path = self.write_jsonl(rows)
+        r = self.run_report(path, "--min-answer-turns", "1")
+        data = json.loads(r.stdout)
+        self.assertEqual(data["status"], "PASS")
+        self.assertEqual(data["metrics"]["daemon_path_rate"], 0.95)
 
 
 if __name__ == "__main__":

@@ -98,6 +98,9 @@ def capture_and_report(args: argparse.Namespace) -> dict:
         max_missing_rate=args.max_missing_rate,
         require_semantic=not args.allow_nonsemantic,
         min_answer_turns=args.min_answer_turns,
+        min_daemon_rate=args.min_daemon_rate,
+        max_subprocess_rate=args.max_subprocess_rate,
+        max_p95_retrieval_latency_ms=args.max_p95_retrieval_latency_ms,
     )
     Path(report_md).parent.mkdir(parents=True, exist_ok=True)
     Path(report_json).parent.mkdir(parents=True, exist_ok=True)
@@ -162,6 +165,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-missing-rate", type=float, default=0.10)
     p.add_argument("--min-answer-turns", type=int, default=5, help="answer-aware events required before PASS (default 5)")
     p.add_argument("--allow-nonsemantic", action="store_true")
+    p.add_argument("--min-daemon-rate", type=float, default=0.95, help="minimum daemon retrieval path rate before PASS (default 0.95)")
+    p.add_argument("--max-subprocess-rate", type=float, default=0.0, help="maximum subprocess fallback rate before PASS (default 0.0)")
+    p.add_argument("--max-p95-retrieval-latency-ms", type=float, default=500.0, help="maximum P95 retrieval latency before PASS (default 500ms)")
     p.add_argument("--json", action="store_true", help="print full capture/report JSON")
     p.add_argument("--strict", action="store_true", help="exit nonzero on WARN as well as FAIL")
     p.add_argument("--version", action="version", version=f"%(prog)s {TOOL_VERSION}")

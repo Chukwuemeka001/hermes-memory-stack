@@ -49,6 +49,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
@@ -432,28 +433,63 @@ def build_relevance_index(home: str, query: str | None, relevance_hits: list | N
     memory_entry_index.search_memories().
     """
     if not query or not str(query).strip():
-        return {"by_hash": {}, "by_ref": {}}, "disabled:no-query"
+        telemetry = {
+            "path": "disabled", "retrieval_latency_ms": 0.0, "n_requested": n_results,
+            "hits_returned": 0, "candidate_pool_size": 0, "collection": "memories",
+            "note": "no-query",
+        }
+        return {"by_hash": {}, "by_ref": {}, "_telemetry": telemetry}, "disabled:no-query"
+    requested = max(1, int(n_results))
+    overall_t0 = time.monotonic()
+    telemetry = {
+        "path": "unknown", "retrieval_latency_ms": 0.0, "n_requested": requested,
+        "hits_returned": 0, "candidate_pool_size": None, "collection": "memories",
+    }
     try:
         hits = relevance_hits
         source = "injected"
         if hits is None:
             try:
                 import memory_entry_index as MEI  # noqa: WPS433
-                hits = MEI.search_memories(str(query), home, n_results=n_results)
-                if hits:
-                    source = (hits[0].get("__search_source") or "direct")
+                if hasattr(MEI, "search_memories_with_telemetry"):
+                    hits, telemetry = MEI.search_memories_with_telemetry(str(query), home, n_results=n_results)
                 else:
-                    source = "daemon-or-direct-empty"
+                    t0 = time.monotonic()
+                    hits = MEI.search_memories(str(query), home, n_results=n_results)
+                    telemetry = {**telemetry, "path": (hits[0].get("__search_source") if hits else "direct"),
+                                 "retrieval_latency_ms": round((time.monotonic() - t0) * 1000, 2),
+                                 "hits_returned": len(hits or [])}
+                if hits:
+                    source = telemetry.get("path") or hits[0].get("__search_source") or "direct"
+                else:
+                    source = f"{telemetry.get('path') or 'daemon-or-direct'}-empty"
             except Exception as e:
                 hits = []
+                telemetry = {**telemetry, "path": "direct", "error": type(e).__name__}
                 source = f"daemon-or-direct-error:{type(e).__name__}"
             if not hits:
+                t0 = time.monotonic()
                 hits, sub_note = _subprocess_memory_hits(home, str(query), n_results=n_results)
-                source = sub_note if hits else f"{source}+{sub_note}"
+                sub_latency = round((time.monotonic() - t0) * 1000, 2)
+                if hits:
+                    telemetry = {**telemetry, "path": "subprocess", "retrieval_latency_ms": round((time.monotonic() - overall_t0) * 1000, 2),
+                                 "hits_returned": len(hits), "n_requested": requested, "note": sub_note}
+                    source = sub_note
+                else:
+                    telemetry = {**telemetry, "retrieval_latency_ms": round((time.monotonic() - overall_t0) * 1000, 2),
+                                 "hits_returned": 0, "note": f"{source}+{sub_note}"}
+                    source = f"{source}+{sub_note}"
+        else:
+            telemetry = {**telemetry, "path": "injected", "hits_returned": len(hits or [])}
     except Exception as e:
+        t0 = time.monotonic()
         hits, sub_note = _subprocess_memory_hits(home, str(query), n_results=n_results)
         if not hits:
-            return {"by_hash": {}, "by_ref": {}}, f"unavailable:{e};{sub_note}"
+            telemetry = {**telemetry, "path": "unavailable", "retrieval_latency_ms": round((time.monotonic() - overall_t0) * 1000, 2),
+                         "hits_returned": 0, "error": str(e), "note": sub_note}
+            return {"by_hash": {}, "by_ref": {}, "_telemetry": telemetry}, f"unavailable:{e};{sub_note}"
+        telemetry = {**telemetry, "path": "subprocess", "retrieval_latency_ms": round((time.monotonic() - overall_t0) * 1000, 2),
+                     "hits_returned": len(hits), "note": sub_note}
         source = sub_note
 
     by_hash, by_ref = {}, {}
@@ -469,7 +505,8 @@ def build_relevance_index(home: str, query: str | None, relevance_hits: list | N
             by_hash[ch] = max(score, by_hash.get(ch, 0.0))
         if ref:
             by_ref[ref] = max(score, by_ref.get(ref, 0.0))
-    return {"by_hash": by_hash, "by_ref": by_ref}, f"memories-index:{len(hits or [])} hits via {source}"
+    telemetry = {**telemetry, "hits_returned": len(hits or []), "n_requested": telemetry.get("n_requested", requested)}
+    return {"by_hash": by_hash, "by_ref": by_ref, "_telemetry": telemetry}, f"memories-index:{len(hits or [])} hits via {source}"
 
 
 def relevance_for(text: str, ref: str, rel_index: dict) -> tuple[float, str]:
@@ -585,6 +622,7 @@ def project(home: str, *, budget: int = DEFAULT_BUDGET,
     recency_index, recency_note = build_recency_index(home, db_path)
     relevance_index, relevance_note = build_relevance_index(
         home, query, relevance_hits, n_results=relevance_n)
+    retrieval_telemetry = dict(relevance_index.get("_telemetry") or {})
 
     # ---- score every entry -------------------------------------------------
     scored: list[dict] = []
@@ -728,6 +766,7 @@ def project(home: str, *, budget: int = DEFAULT_BUDGET,
         "recency_source": recency_note,
         "recency_breakdown": rec_breakdown,
         "relevance_source": relevance_note,
+        "retrieval_telemetry": retrieval_telemetry,
         "relevance_breakdown": rel_breakdown,
         "per_entry": per_entry,
         "projected_block": projected_block,
