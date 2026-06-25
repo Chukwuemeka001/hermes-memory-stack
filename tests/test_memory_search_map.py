@@ -113,6 +113,15 @@ def build_home(tmp: str, *, with_notes=True, with_temporal=True, with_spine=True
     return home
 
 
+
+def _write_shadow_jsonl(home: str, rows: list[dict]) -> str:
+    path = os.path.join(home, "reports", "shadow-p3-test.jsonl")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        for row in rows:
+            fh.write(json.dumps(row) + "\n")
+    return path
+
 TODAY = "2026-06-25"
 
 # Injected "daemon up" semantic health for hermetic PASS paths (no real daemon
@@ -253,6 +262,77 @@ class TestQuery(SearchMapBase):
         for lane in r["lanes"]:
             seen = [(m["key"], m["where"]) for m in lane["matched_topics"]]
             self.assertEqual(len(seen), len(set(seen)))
+
+    def test_route_packet_filters_user_memory_when_topic_source_is_user(self):
+        r = self.query("requires real verification delegated output trusting")
+        self.assertEqual(r["recommended_lane"], "memory-entry")
+        self.assertEqual(r["route_packet"]["memory_where"], {"store_key": "user"})
+        self.assertIn("requires", r["route_packet"]["query_terms"])
+
+    def test_lane_feedback_from_shadow_jsonl_adjusts_ranking(self):
+        rows = []
+        for i in range(5):
+            rows.append({
+                "tool": "memory_shadow", "mode": "shadow", "turn_id": f"ok{i}",
+                "generated_at": "2026-06-25T09:00:00+00:00",
+                "projected": {
+                    "savings_pct": 57.0,
+                    "relevance_source": "memories-index:20 hits via daemon",
+                    "retrieval_telemetry": {"path": "daemon"},
+                    "route_packet": {"recommended_lane": "memory-entry"},
+                },
+                "answer_usage": {"used_missing_from_projection": [], "used_selected_count": 2},
+            })
+        for i in range(5):
+            rows.append({
+                "tool": "memory_shadow", "mode": "shadow", "turn_id": f"bad{i}",
+                "generated_at": "2026-06-25T10:00:00+00:00",
+                "projected": {
+                    "savings_pct": 10.0,
+                    "route_packet": {"recommended_lane": "session-semantic"},
+                    "retrieval_telemetry": {"path": "subprocess"},
+                },
+                "answer_usage": {"used_missing_from_projection": [{"entry_ref": "memory#1"}], "used_selected_count": 0},
+            })
+        _write_shadow_jsonl(self.home, rows)
+        m = self.build()
+        fb = m["lane_feedback"]["lanes"]
+        self.assertEqual(fb["memory-entry"]["health"], "ok")
+        self.assertGreater(fb["memory-entry"]["score_adjustment"], 0)
+        self.assertEqual(fb["session-semantic"]["health"], "warn")
+        self.assertLess(fb["session-semantic"]["score_adjustment"], 0)
+        r = MSM.rank_lanes(m, "qqzz wwxx vvyy", home=self.home)
+        mem = next(l for l in r["lanes"] if l["id"] == "memory-entry")
+        self.assertTrue(any("feedback" in x for x in mem["reasons"]))
+
+    def test_single_poisoned_or_unattributed_event_does_not_move_ranking(self):
+        _write_shadow_jsonl(self.home, [
+            {
+                "tool": "memory_shadow", "mode": "shadow", "turn_id": "legacy",
+                "generated_at": "2026-06-25T09:00:00+00:00",
+                "projected": {
+                    "relevance_source": "memories-index:20 hits via daemon",
+                    "retrieval_telemetry": {"path": "daemon"},
+                },
+                "answer_usage": {"used_missing_from_projection": []},
+            },
+            {
+                "tool": "memory_shadow", "mode": "shadow", "turn_id": "poison",
+                "generated_at": "2026-06-25T10:00:00+00:00",
+                "projected": {
+                    "route_packet": {"recommended_lane": "memory-entry"},
+                    "retrieval_telemetry": {"path": "daemon"},
+                },
+                "answer_usage": {"used_missing_from_projection": [{"entry_ref": "memory#1"}]},
+            },
+        ])
+        m = self.build()
+        self.assertEqual(m["lane_feedback"]["unattributed_events"], 1)
+        fb = m["lane_feedback"]["lanes"]["memory-entry"]
+        self.assertEqual(fb["health"], "insufficient")
+        self.assertEqual(fb["score_adjustment"], 0.0)
+        r = MSM.rank_lanes(m, "qqzz wwxx vvyy", home=self.home)
+        self.assertFalse(r["matched"])
 
 
 class TestDoctor(SearchMapBase):

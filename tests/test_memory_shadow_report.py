@@ -15,7 +15,7 @@ SCRIPT = os.path.join(ROOT, "scripts", "memory_shadow_report.py")
 def event(turn_id="t1", *, savings=55.0, source="memories-index:20 hits via daemon",
           answer_usage=None, include_blocks=False, active_block="full", over_budget=False,
           projected_sha="proj", safety_drop=False, retrieval_path="daemon",
-          retrieval_latency_ms=80.0, retrieval_telemetry=True):
+          retrieval_latency_ms=80.0, retrieval_telemetry=True, route_fp=None):
     full = {"entries_total": 4, "tokens": 2000, "sha256": "full"}
     projected = {
         "entries_selected": 2,
@@ -29,6 +29,8 @@ def event(turn_id="t1", *, savings=55.0, source="memories-index:20 hits via daem
         "relevance_reserved_count": 2,
         "over_budget": over_budget,
     }
+    if route_fp is not None:
+        projected["route_packet"] = {"feedback_fingerprint": route_fp, "recommended_lane": "memory-entry"}
     if retrieval_telemetry:
         projected["retrieval_telemetry"] = {
             "path": retrieval_path,
@@ -129,6 +131,28 @@ class TestShadowReport(unittest.TestCase):
         data = json.loads(r.stdout)
         self.assertEqual(data["status"], "FAIL")
         self.assertEqual(data["metrics"]["determinism_violations"], 1)
+
+    def test_determinism_groups_are_feedback_fingerprint_aware(self):
+        rows = [
+            event("same1", projected_sha="proj-a", answer_usage={"used_missing_from_projection": []}, route_fp="memory-entry:1:0.0"),
+            event("same2", projected_sha="proj-b", answer_usage={"used_missing_from_projection": []}, route_fp="memory-entry:5:0.1"),
+        ]
+        path = self.write_jsonl(rows)
+        r = self.run_report(path, "--min-answer-turns", "1")
+        data = json.loads(r.stdout)
+        self.assertEqual(data["metrics"]["determinism_violations"], 0)
+        self.assertFalse(any("deterministic replay" in f for f in data["failures"]))
+
+    def test_determinism_still_fails_with_same_feedback_fingerprint(self):
+        rows = [
+            event("same1", projected_sha="proj-a", answer_usage={"used_missing_from_projection": []}, route_fp="memory-entry:1:0.0"),
+            event("same2", projected_sha="proj-b", answer_usage={"used_missing_from_projection": []}, route_fp="memory-entry:1:0.0"),
+        ]
+        path = self.write_jsonl(rows)
+        r = self.run_report(path, "--min-answer-turns", "1")
+        data = json.loads(r.stdout)
+        self.assertEqual(data["metrics"]["determinism_violations"], 1)
+        self.assertTrue(any("deterministic replay" in f for f in data["failures"]))
 
     def test_duplicate_turn_keeps_latest(self):
         rows = [

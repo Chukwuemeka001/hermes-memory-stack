@@ -161,7 +161,9 @@ def summarize(events: list[dict], errors: list[dict], *, min_avg_savings: float,
     determinism_groups: dict[tuple, set] = collections.defaultdict(set)
 
     for e in shadow_events:
-        group_key = (e.get("query_sha256"), (e.get("full") or {}).get("sha256"), e.get("budget_tokens"))
+        route_pkt = (e.get("projected") or {}).get("route_packet") or {}
+        route_fp = route_pkt.get("feedback_fingerprint") if isinstance(route_pkt, dict) else None
+        group_key = (e.get("query_sha256"), (e.get("full") or {}).get("sha256"), e.get("budget_tokens"), route_fp)
         determinism_groups[group_key].add((e.get("projected") or {}).get("sha256"))
         diff = e.get("diff") or {}
         skipped_ref_counts.update(str(x) for x in diff.get("skipped_refs") or [])

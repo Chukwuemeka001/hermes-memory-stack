@@ -370,6 +370,16 @@ class TestContextAwareProjection(unittest.TestCase):
         self.assertEqual(refs["memory#1"]["components"]["relevance"], 0.75)
         self.assertEqual(refs["memory#1"]["relevance_source"], "entry_ref")
 
+    def test_route_packet_and_where_telemetry_are_reported_for_injected_hits(self):
+        root = make_home(memory_entries=[PREF_HIGH], user_entries=["User requires real verification before trusting delegated work."])
+        rep = project(root, budget=2000, query="requires real verification delegated work", relevance_hits=[
+            {"entry_ref": "user#0", "score": 1.0}
+        ])
+        self.assertEqual(rep["route_packet"]["recommended_lane"], "memory-entry")
+        self.assertEqual(rep["route_packet"]["memory_where"], {"store_key": "user"})
+        self.assertEqual(rep["retrieval_telemetry"]["path"], "injected")
+        self.assertEqual(rep["retrieval_telemetry"].get("where"), {"store_key": "user"})
+
 
 # --------------------------------------------------------------------------- #
 # Empty / edge inputs                                                          #

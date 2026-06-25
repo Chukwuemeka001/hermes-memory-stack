@@ -47,7 +47,9 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import glob
 import json
+import math
 import os
 import re
 import sqlite3
@@ -67,6 +69,10 @@ TOOL_VERSION = "1.0.0"
 # "<= 1000 token" budget is measured on the same ruler as everything else.
 CHARS_PER_TOKEN = 4
 DEFAULT_MAP_TOKEN_BUDGET = 1000
+DEFAULT_FEEDBACK_DAYS = 14
+MIN_FEEDBACK_EVENTS = 3
+MIN_FEEDBACK_ANSWER_EVENTS = 5
+FEEDBACK_HALFLIFE_DAYS = 7.0
 
 # Freshness thresholds (days). A store older than its threshold is "stale" — a
 # WARN-level signal in doctor, and a small ranking penalty in query.
@@ -78,6 +84,7 @@ DEFAULT_FRESH_DAYS = {
     "temporal": 30,
     "spine": 21,
     "shadow_report": 7,
+    "lane_feedback": DEFAULT_FEEDBACK_DAYS,
 }
 
 # How many topics to surface in the map (keeps the markdown under budget). Query
@@ -432,15 +439,169 @@ def probe_spine(home: str, today: _dt.date, fresh_days: dict) -> dict:
     return h
 
 
-def probe_shadow_report(home: str, today: _dt.date, fresh_days: dict,
-                        reports_dirs: list[str] | None = None) -> dict:
-    """Newest shadow-report-*.json across candidate report dirs → latest PASS/
-    WARN/FAIL. Cheap JSON read; no telemetry recompute."""
-    cands = reports_dirs or [
+
+def _candidate_report_dirs(home: str, reports_dirs: list[str] | None = None) -> list[str]:
+    return reports_dirs or [
         os.path.join(home, "reports"),
         os.path.join(home, "packages", "hermes-memory-stack", "reports"),
         os.path.join(_HERE, "..", "reports"),
     ]
+
+
+def _event_route_lane(event: dict) -> str | None:
+    pkt = ((event.get("projected") or {}).get("route_packet") or event.get("route_packet") or {})
+    lane = pkt.get("recommended_lane") if isinstance(pkt, dict) else None
+    known = {l["id"] for l in LANES} if "LANES" in globals() else set()
+    if lane and str(lane) in known:
+        return str(lane)
+    return None
+
+
+def probe_lane_feedback(home: str, today: _dt.date, fresh_days: dict,
+                        reports_dirs: list[str] | None = None,
+                        max_days: int | None = None) -> dict:
+    """Derive dynamic lane priors from shadow/answer telemetry.
+
+    This is the "learn" loop for the cheap map: it never mutates map definitions
+    and never trusts LLM text. Only explicit route_packet.recommended_lane values
+    for known LANES are attributable; legacy/free-text source labels are ignored.
+    """
+    max_days = max_days if max_days is not None else fresh_days.get("lane_feedback", DEFAULT_FEEDBACK_DAYS)
+    stats: dict[str, dict] = {}
+    newest: _dt.datetime | None = None
+    files_seen = 0
+    events_seen = 0
+    attributed_turns: set[str] = set()
+    unattributed_events = 0
+
+    def bucket(lane: str) -> dict:
+        if lane not in stats:
+            stats[lane] = {
+                "events": 0, "answer_usage_events": 0, "used_missing": 0,
+                "used_selected": 0, "weighted_used_missing": 0.0,
+                "weighted_used_selected": 0.0, "weighted_events": 0.0,
+                "weighted_answer_events": 0.0, "daemon_events": 0,
+                "subprocess_events": 0, "last_seen": None,
+                "score_adjustment": 0.0, "health": "unknown",
+                "attribution": "route_packet", "min_evidence_met": False,
+            }
+        return stats[lane]
+
+    for d in _candidate_report_dirs(home, reports_dirs):
+        d = os.path.abspath(os.path.expanduser(d))
+        if not os.path.isdir(d):
+            continue
+        for path in sorted(glob.glob(os.path.join(d, "*shadow*.jsonl"))):
+            files_seen += 1
+            try:
+                fh = open(path, encoding="utf-8")
+            except OSError:
+                continue
+            with fh:
+                for line in fh:
+                    if not line.strip():
+                        continue
+                    try:
+                        e = json.loads(line)
+                    except Exception:
+                        continue
+                    if not (e.get("tool") == "memory_shadow" or e.get("mode") == "shadow"):
+                        continue
+                    lane = _event_route_lane(e)
+                    if not lane:
+                        unattributed_events += 1
+                        continue
+                    turn_id = str(e.get("turn_id") or f"{path}:{events_seen}")
+                    sig = f"{lane}:{turn_id}"
+                    if sig in attributed_turns:
+                        continue
+                    attributed_turns.add(sig)
+                    when = _parse_iso(e.get("generated_at"))
+                    age = _age_days(when, today) if when else None
+                    if when:
+                        if max_days is not None and age is not None and age > max_days:
+                            continue
+                        newest = when if newest is None or when > newest else newest
+                    weight = 1.0
+                    if age is not None:
+                        weight = math.exp(-float(age) / max(0.01, FEEDBACK_HALFLIFE_DAYS))
+                    events_seen += 1
+                    b = bucket(lane)
+                    b["events"] += 1
+                    b["weighted_events"] += weight
+                    if when:
+                        b["last_seen"] = when.isoformat()
+                    proj = e.get("projected") or {}
+                    tel = proj.get("retrieval_telemetry") or {}
+                    if isinstance(tel, dict):
+                        if tel.get("path") == "daemon":
+                            b["daemon_events"] += 1
+                        if tel.get("path") == "subprocess":
+                            b["subprocess_events"] += 1
+                    usage = e.get("answer_usage") or {}
+                    if usage:
+                        b["answer_usage_events"] += 1
+                        b["weighted_answer_events"] += weight
+                        miss = usage.get("used_missing_from_projection") or []
+                        if isinstance(miss, list):
+                            b["used_missing"] += len(miss)
+                            b["weighted_used_missing"] += weight * len(miss)
+                        try:
+                            used_selected = int(usage.get("used_selected_count") or 0)
+                        except (TypeError, ValueError):
+                            used_selected = 0
+                        b["used_selected"] += used_selected
+                        b["weighted_used_selected"] += weight * used_selected
+
+    for lane, b in stats.items():
+        ev = max(1, int(b["events"]))
+        ans = max(1, int(b["answer_usage_events"]))
+        weighted_ans = max(1e-9, float(b.get("weighted_answer_events") or 0.0))
+        miss_rate = round(float(b["weighted_used_missing"]) / weighted_ans, 4) if b["answer_usage_events"] else 0.0
+        selected_rate = round(float(b["weighted_used_selected"]) / weighted_ans, 4) if b["answer_usage_events"] else 0.0
+        daemon_rate = round(float(b["daemon_events"]) / ev, 4)
+        subprocess_rate = round(float(b["subprocess_events"]) / ev, 4)
+        min_met = b["events"] >= MIN_FEEDBACK_EVENTS and b["answer_usage_events"] >= MIN_FEEDBACK_ANSWER_EVENTS
+        adj = 0.0
+        if min_met:
+            adj = min(0.35, selected_rate * 0.1)
+            if miss_rate:
+                adj -= min(0.6, miss_rate)
+            if subprocess_rate:
+                adj -= min(0.4, subprocess_rate)
+        b["used_missing_rate"] = miss_rate
+        b["used_selected_rate"] = selected_rate
+        b["daemon_rate"] = daemon_rate
+        b["subprocess_rate"] = subprocess_rate
+        b["min_evidence_met"] = bool(min_met)
+        b["score_adjustment"] = round(max(-0.75, min(0.5, adj)), 3)
+        if not min_met:
+            b["health"] = "insufficient"
+        else:
+            b["health"] = "warn" if miss_rate or subprocess_rate > 0 else "ok"
+
+    newest_age = _age_days(newest, today) if newest else None
+    return {
+        "present": bool(stats),
+        "status": "ok" if stats else "missing",
+        "fresh": (newest_age is not None and newest_age <= max_days) if newest else None,
+        "age_days": newest_age,
+        "window_days": max_days,
+        "halflife_days": FEEDBACK_HALFLIFE_DAYS,
+        "min_events": MIN_FEEDBACK_EVENTS,
+        "min_answer_events": MIN_FEEDBACK_ANSWER_EVENTS,
+        "files_seen": files_seen,
+        "events_seen": events_seen,
+        "unattributed_events": unattributed_events,
+        "lanes": stats,
+    }
+
+
+def probe_shadow_report(home: str, today: _dt.date, fresh_days: dict,
+                        reports_dirs: list[str] | None = None) -> dict:
+    """Newest shadow-report-*.json across candidate report dirs → latest PASS/
+    WARN/FAIL. Cheap JSON read; no telemetry recompute."""
+    cands = _candidate_report_dirs(home, reports_dirs)
     newest_path, newest_mt = None, -1.0
     for d in cands:
         d = os.path.abspath(os.path.expanduser(d))
@@ -665,6 +826,7 @@ def build_map(home: str, *, today: _dt.date | None = None,
     temporal_h = probe_temporal(home, today, fresh_days)
     spine_h = probe_spine(home, today, fresh_days)
     shadow_h = probe_shadow_report(home, today, fresh_days, reports_dirs)
+    lane_feedback = probe_lane_feedback(home, today, fresh_days, reports_dirs)
 
     stores = {
         "hot_memory": mem_h,
@@ -710,6 +872,7 @@ def build_map(home: str, *, today: _dt.date | None = None,
         "stores": stores,
         "topics": emitted,
         "topics_total": len(all_topics),
+        "lane_feedback": lane_feedback,
         "_all_topics": all_topics,  # internal; stripped before emission
     }
 
@@ -749,6 +912,7 @@ def _lane_summaries(map_obj: dict, home: str, scripts: str, notes: str) -> list[
             "why": lane["why"],
             "command": _fmt(lane["command"], home=home, scripts=scripts, notes=notes, path=path),
             "cheap_alt": _fmt(lane["cheap_alt"], home=home, scripts=scripts, notes=notes, path=path),
+            "feedback": (map_obj.get("lane_feedback") or {}).get("lanes", {}).get(lane["id"], {}),
         })
     return out
 
@@ -773,6 +937,7 @@ def _strip_internal(map_obj: dict) -> dict:
 W_INTENT = 2.0
 W_TOPIC = 3.0
 W_AVAIL = 1.0
+W_FEEDBACK = 1.0
 _AVAIL_SCORE = {"ok": 1.0, "stale": 0.4, "degraded": 0.2, "n/a": 0.5, "missing": 0.0}
 
 
@@ -816,7 +981,10 @@ def rank_lanes(map_obj: dict, query: str, *, home: str | None = None,
         topic_score = max((m["match_score"] for m in lmatches), default=0.0)
         avail, count = _store_availability(map_obj, lane["store"])
         avail_score = _AVAIL_SCORE.get(avail, 0.0)
-        total = (W_INTENT * intent_score + W_TOPIC * topic_score + W_AVAIL * avail_score)
+        feedback = ((map_obj.get("lane_feedback") or {}).get("lanes", {}) or {}).get(lane["id"], {})
+        feedback_adj = float(feedback.get("score_adjustment") or 0.0)
+        query_signal = (W_INTENT * intent_score + W_TOPIC * topic_score)
+        total = (query_signal + W_AVAIL * avail_score + W_FEEDBACK * feedback_adj)
 
         # pick a representative matched topic to fill {key}/{path}
         rep = lmatches[0] if lmatches else None
@@ -831,12 +999,15 @@ def rank_lanes(map_obj: dict, query: str, *, home: str | None = None,
         if topic_score > 0:
             reasons.append(f"{len(lmatches)} topic hit(s)")
         reasons.append(f"store {avail}")
+        if feedback_adj:
+            reasons.append(f"feedback {feedback_adj:+.2f}")
 
         ranked.append({
             "id": lane["id"],
             "title": lane["title"],
             "cost": lane["cost"],
             "score": round(total, 3),
+            "query_signal": round(query_signal, 3),
             "store": lane["store"],
             "availability": avail,
             "store_count": count,
@@ -845,11 +1016,13 @@ def rank_lanes(map_obj: dict, query: str, *, home: str | None = None,
             "why": lane["why"],
             "reasons": reasons,
             "matched_topics": lmatches[:top_topics],
+            "feedback": feedback,
         })
 
     ranked.sort(key=lambda r: (-r["score"], LANE_ORDER.get(r["id"], 99)))
     # If nothing matched at all, surface a sane default ordering note.
-    any_signal = any(r["score"] > W_AVAIL * _AVAIL_SCORE.get(r["availability"], 0.0) + 1e-9 for r in ranked)
+    any_signal = any(float(r.get("query_signal") or 0.0) > 1e-9 for r in ranked)
+    route_packet = _route_packet(query, ranked, map_obj)
     return {
         "tool": "memory_search_map",
         "tool_version": TOOL_VERSION,
@@ -860,12 +1033,47 @@ def rank_lanes(map_obj: dict, query: str, *, home: str | None = None,
         "query_terms": sorted(qterms),
         "matched": any_signal,
         "recommended_lane": ranked[0]["id"] if ranked else None,
+        "route_packet": route_packet,
         "lanes": ranked,
         "note": None if any_signal else
             "No strong intent/topic signal; lanes ranked by store availability only. "
             "Start with the top lane or refine the query.",
     }
 
+
+
+def _route_packet(query: str, ranked: list[dict], map_obj: dict) -> dict:
+    top = ranked[0] if ranked else {}
+    lane = top.get("id")
+    matched = top.get("matched_topics") or []
+    where = None
+    if lane == "memory-entry" and matched:
+        sources = {m.get("source") for m in matched if m.get("source") in {"hot_memory", "user_memory"}}
+        if len(sources) == 1:
+            where = {"store_key": "user" if "user_memory" in sources else "memory"}
+    fb = map_obj.get("lane_feedback") or {}
+    lanes = fb.get("lanes") or {}
+    fingerprint = ";".join(f"{k}:{v.get('events',0)}:{v.get('score_adjustment',0)}" for k, v in sorted(lanes.items()))
+    return {
+        "schema_version": 1,
+        "query_terms": sorted(query_terms(query)),
+        "recommended_lane": lane,
+        "confidence": round(float(top.get("score") or 0.0), 3) if top else 0.0,
+        "memory_where": where,
+        "matched_topic_keys": [m.get("key") for m in matched[:3] if m.get("key")],
+        "feedback_window_days": ((map_obj.get("lane_feedback") or {}).get("window_days")),
+        "feedback_fingerprint": fingerprint,
+    }
+
+
+def route_packet(home: str, query: str, *, today: _dt.date | None = None,
+                 scripts_dir: str | None = None, notes_dir: str | None = None,
+                 reports_dirs: list[str] | None = None,
+                 ping_timeout: float = 1.5) -> dict:
+    """Build the dynamic map and return only the compact routing packet."""
+    m = build_map(home, today=today, scripts_dir=scripts_dir, notes_dir=notes_dir,
+                  reports_dirs=reports_dirs, ping_timeout=ping_timeout)
+    return rank_lanes(m, query, home=home, scripts_dir=scripts_dir, notes_dir=notes_dir)["route_packet"]
 
 LANE_ORDER = {lane["id"]: i for i, lane in enumerate(LANES)}
 
@@ -910,6 +1118,11 @@ def doctor(map_obj: dict, *, fresh_days: dict | None = None, strict: bool = Fals
     _opt("master_index", "master_index (MASTER_CONTEXT_INDEX.md)", "master_index")
     _opt("temporal", "temporal (memory_versions.db)", "temporal")
     _opt("shadow_report", "shadow_report", "shadow_report")
+    lf = map_obj.get("lane_feedback") or {}
+    if lf.get("present"):
+        oks.append(f"lane_feedback ok ({lf.get('events_seen')} events/{len((lf.get('lanes') or {}))} lanes)")
+    else:
+        oks.append("lane_feedback pending (no shadow JSONL yet; static lane priors active)")
 
     # Semantic daemon: WARN when down (retrieval falls back to subprocess/static).
     sem = stores.get("semantic") or {}
@@ -971,6 +1184,9 @@ def render_map_markdown(map_obj: dict) -> str:
     sh = s.get("shadow_report", {})
     lines.append(f"| shadow_report | {sh.get('report_status') or sh.get('status')} | — | "
                  f"{ {True:'✓', False:'stale', None:'—'}[sh.get('fresh')] } |")
+    lf = map_obj.get("lane_feedback", {})
+    lines.append(f"| lane_feedback | {lf.get('status','missing')} | {lf.get('events_seen',0)} | "
+                 f"{ {True:'✓', False:'stale', None:'—'}[lf.get('fresh')] } |")
 
     lines += ["", "## Lanes", "", "| Lane | When | Store | Command |", "|---|---|---|---|"]
     for lane in map_obj.get("lanes", []):
@@ -1019,6 +1235,9 @@ def render_query_markdown(result: dict) -> str:
             continue
         lines.append(f"## {i}. `{lane['id']}` — score {lane['score']} ({', '.join(lane['reasons'])})")
         lines.append(f"- {lane['title']} · cost: {lane['cost']} · store: {lane['store'] or 'code'} ({lane['availability']})")
+        if lane.get("feedback"):
+            fb = lane["feedback"]
+            lines.append(f"- Feedback: events={fb.get('events', 0)} miss_rate={fb.get('used_missing_rate', 0)} adj={fb.get('score_adjustment', 0)}")
         lines.append(f"- Run: `{lane['command']}`")
         if lane.get("cheap_alt"):
             lines.append(f"- Alt: `{lane['cheap_alt']}`")
